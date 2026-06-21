@@ -65,37 +65,70 @@ Guarda una copia local segura — los necesitarás de nuevo tras la migración a
 
 ## Ejecutar fase 2
 
-1. Completa el checklist anterior.
-2. Configura las variables GitHub.
-3. **Push a `main`** o **Run workflow** manual en *Production Deploy*.
-
-Flujo esperado:
-
-```mermaid
-flowchart LR
-  A[Tests] --> B[Terraform migrate us-east-1]
-  B --> C[Docker push ECR us-east-1]
-  C --> D[App Runner start-deployment]
-```
-
-4. Tras el apply, copia outputs del log o consola:
-   - `app_runner_service_url` → URL pública del API.
-   - `app_runner_service_arn` → guardar en variable `APP_RUNNER_SERVICE_ARN` (redeploy manual).
-
-5. Actualiza secretos en **Secrets Manager `us-east-1`** si Terraform creó placeholders nuevos.
-
-6. Verifica salud:
+### Paso 1 — Exportar secretos (`sa-east-1`)
 
 ```bash
-curl -s "https://<app-runner-url>/health" | jq .
+cd infrastructure/terraform
+aws sts get-caller-identity   # verifica cuenta AWS
+
+bash scripts/phase2-secrets.sh export ~/visor-protect-secrets-phase2.json
 ```
 
-Respuesta esperada: `mongodb_connected: true`, `alert_broker: "redis"`.
+O manualmente por consola: [Secrets Manager sa-east-1](https://sa-east-1.console.aws.amazon.com/secretsmanager/).
 
-## Post fase 2 — Frontend
+### Paso 2 — Variables GitHub
 
-- Build del frontend apuntando `VITE_API_URL` (o equivalente) a `app_runner_service_url`.
-- CORS en backend ya usa `CORS_ORIGIN` de Terraform.
+**Settings → Secrets and variables → Actions → Variables**
+
+| Variable | Valor |
+|----------|-------|
+| `AWS_REGION` | `us-east-1` |
+| `ENABLE_APP_RUNNER` | `true` |
+| `CORS_ORIGIN` | URL del **frontend** (ej. `https://app.tudominio.com.br`) |
+
+### Paso 3 — Disparar deploy
+
+```bash
+# Opción A: push vacío
+git commit --allow-empty -m "chore: activar fase 2 App Runner"
+git push origin main
+
+# Opción B: GitHub → Actions → Production Deploy → Run workflow
+```
+
+Revisa el plan Terraform: destruye recursos en `sa-east-1` y crea en `us-east-1`.
+
+### Paso 4 — Importar secretos (`us-east-1`)
+
+Tras apply exitoso (secretos vacíos creados por Terraform):
+
+```bash
+bash infrastructure/terraform/scripts/phase2-secrets.sh import ~/visor-protect-secrets-phase2.json us-east-1
+```
+
+### Paso 5 — Verificar salud
+
+URL en logs del job *Terraform* → output `app_runner_service_url`, o:
+
+```bash
+aws apprunner list-services --region us-east-1 \
+  --query "ServiceSummaryList[?ServiceName=='visor-protect-production-backend'].ServiceUrl" \
+  --output text
+
+curl -s "https://<SERVICE_URL>/health" | jq .
+```
+
+Esperado: `"mongodb_connected": true`, `"alert_broker": "redis"`.
+
+### Paso 6 — Frontend
+
+Actualiza la URL del API en el frontend (no `CORS_ORIGIN`):
+
+```env
+VITE_API_URL=https://<SERVICE_URL>
+```
+
+Guarda `APP_RUNNER_SERVICE_ARN` en variables GitHub para redeploys manuales.
 
 ## Rollback
 
