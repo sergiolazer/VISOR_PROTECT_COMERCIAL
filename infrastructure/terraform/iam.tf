@@ -75,7 +75,7 @@ resource "aws_iam_role_policy" "apprunner_instance" {
 # Thumbprint obtenido del certificado TLS (40 hex) — evita valores hardcodeados incorrectos
 
 data "tls_certificate" "github_actions" {
-  url = "token.actions.githubusercontent.com"
+  url = "https://token.actions.githubusercontent.com"
 }
 
 locals {
