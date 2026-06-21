@@ -1,0 +1,4 @@
+# Terraform/HCL — LF en CI (Linux) y fmt -check consistente
+*.tf text eol=lf
+*.tfvars text eol=lf
+*.hcl text eol=lf
