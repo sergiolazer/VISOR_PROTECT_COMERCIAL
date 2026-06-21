@@ -72,31 +72,17 @@ resource "aws_iam_role_policy" "apprunner_instance" {
 }
 
 # IAM — GitHub Actions OIDC (CI/CD sin credenciales estáticas)
-# Thumbprint obtenido del certificado TLS (40 hex) — evita valores hardcodeados incorrectos
-
-data "tls_certificate" "github_actions" {
-  url = "https://token.actions.githubusercontent.com"
-}
-
-locals {
-  github_oidc_thumbprints = distinct(concat(
-    [for cert in data.tls_certificate.github_actions.certificates :
-      replace(cert.sha1_fingerprint, ":", "")
-    ],
-    # Cadena cruzada GitHub — ambos intermediarios documentados por AWS
-    [
-      "6938fd4d98bab03faadb97b34396831e3780aea1",
-      "1c58a3a8518e8759bf075b76b750d4f2df264fcd",
-    ],
-  ))
-}
+# Thumbprints SHA-1 oficiales (40 hex) — cadena cruzada GitHub (AWS Security Blog)
 
 resource "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
 
   client_id_list = ["sts.amazonaws.com"]
 
-  thumbprint_list = local.github_oidc_thumbprints
+  thumbprint_list = [
+    "6938fd4d98bab03faadb97b34396831e3780aea1",
+    "1c58a3a8518e8759bf075b76b750d4f2df264fcd",
+  ]
 }
 
 resource "aws_iam_role" "github_deploy" {
