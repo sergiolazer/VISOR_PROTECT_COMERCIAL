@@ -44,7 +44,7 @@ export class AlertFilterTelemetryService implements IAlertFilterTelemetry {
     }
 
     await AlertFilterLogModel.insertMany(
-      audit.rejected.map((rejection) => ({
+      audit.rejected.map((rejection: AlertFilterRejection) => ({
         _id: randomUUID(),
         event_id: audit.eventId,
         event_type: audit.eventType,

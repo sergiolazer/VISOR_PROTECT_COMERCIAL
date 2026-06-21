@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # --- Build ---
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -16,7 +16,7 @@ RUN npm run build -w @visor-protect/shared \
   && npm run build -w @visor-protect/backend
 
 # --- Production ---
-FROM node:22-alpine AS production
+FROM node:24-alpine AS production
 WORKDIR /app
 
 ENV NODE_ENV=production
