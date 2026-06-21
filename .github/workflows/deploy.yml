@@ -94,8 +94,16 @@ jobs:
           terraform_version: 1.9.0
           terraform_wrapper: false
 
+      - name: Terraform Format
+        run: terraform -chdir=${{ env.TF_WORKING_DIR }} fmt -recursive
+
       - name: Terraform Format Check
-        run: terraform -chdir=${{ env.TF_WORKING_DIR }} fmt -check -recursive
+        run: |
+          # fmt -check exit 3 = archivos sin formatear (p. ej. CRLF en Windows)
+          if ! terraform -chdir=${{ env.TF_WORKING_DIR }} fmt -check -recursive; then
+            echo "::error::Terraform fmt -check falló. Ejecuta: terraform -chdir=infrastructure/terraform fmt -recursive"
+            exit 1
+          fi
 
       - name: Terraform Init
         run: terraform -chdir=${{ env.TF_WORKING_DIR }} init -input=false
@@ -104,7 +112,18 @@ jobs:
         run: terraform -chdir=${{ env.TF_WORKING_DIR }} validate
 
       - name: Terraform Plan
-        run: terraform -chdir=${{ env.TF_WORKING_DIR }} plan -input=false -out=deploy.plan
+        run: |
+          set +e
+          terraform -chdir=${{ env.TF_WORKING_DIR }} plan -input=false -out=deploy.plan -detailed-exitcode
+          ec=$?
+          set -e
+          # 0 = sin cambios, 2 = cambios pendientes (éxito), 1 = error
+          if [ "$ec" -eq 1 ]; then
+            exit 1
+          fi
+          if [ "$ec" -ne 0 ] && [ "$ec" -ne 2 ]; then
+            exit "$ec"
+          fi
 
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
