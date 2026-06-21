@@ -27,7 +27,9 @@ RUN addgroup -S visor && adduser -S visor -G visor
 COPY package.json package-lock.json ./
 COPY shared/package.json ./shared/
 COPY backend/package.json ./backend/
-RUN npm ci --omit=dev
+# --ignore-scripts: shared tiene prepare=tsc; sin devDeps tsc no existe (exit 127).
+# Los artefactos ya vienen compilados desde la etapa build.
+RUN npm ci --omit=dev --ignore-scripts
 
 COPY --from=build /app/shared/dist ./shared/dist
 COPY --from=build /app/backend/dist ./backend/dist
