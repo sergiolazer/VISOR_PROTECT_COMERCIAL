@@ -1,7 +1,16 @@
 variable "aws_region" {
-  description = "Región AWS (sa-east-1 recomendada para comercios en Brasil)"
+  description = "Region AWS. ECR/Redis en sa-east-1. App Runner NO existe en sa-east-1: usar us-east-1 con ENABLE_APP_RUNNER=true."
   type        = string
   default     = "sa-east-1"
+
+  validation {
+    condition = !var.enable_app_runner || contains([
+      "us-east-1", "us-east-2", "us-west-2",
+      "ap-south-1", "ap-southeast-1", "ap-southeast-2", "ap-northeast-1",
+      "eu-central-1", "eu-west-1", "eu-west-2", "eu-west-3",
+    ], var.aws_region)
+    error_message = "App Runner no esta disponible en sa-east-1. Configure AWS_REGION=us-east-1 (y recursos en esa region) antes de ENABLE_APP_RUNNER=true."
+  }
 }
 
 variable "project_name" {

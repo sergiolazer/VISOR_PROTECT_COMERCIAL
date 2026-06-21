@@ -88,6 +88,13 @@ jobs:
           echo "TF_VAR_cors_origin=$CORS" >> "$GITHUB_ENV"
           echo "Terraform github_org=$ORG cors_origin=$CORS enable_app_runner=$ENABLE_AR"
 
+      - name: Download Terraform state
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-state
+          path: infrastructure/terraform
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -107,6 +114,9 @@ jobs:
 
       - name: Terraform Init
         run: terraform -chdir=${{ env.TF_WORKING_DIR }} init -input=false
+
+      - name: Bootstrap import existing AWS resources
+        run: bash infrastructure/terraform/scripts/bootstrap-import.sh
 
       - name: Terraform Validate
         run: terraform -chdir=${{ env.TF_WORKING_DIR }} validate
@@ -128,6 +138,17 @@ jobs:
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
         run: terraform -chdir=${{ env.TF_WORKING_DIR }} apply -input=false -auto-approve deploy.plan
+
+      - name: Persist Terraform state
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-state
+          path: |
+            infrastructure/terraform/terraform.tfstate
+            infrastructure/terraform/terraform.tfstate.backup
+          retention-days: 90
+          if-no-files-found: ignore
 
       - name: Export Terraform outputs
         id: tf_outputs

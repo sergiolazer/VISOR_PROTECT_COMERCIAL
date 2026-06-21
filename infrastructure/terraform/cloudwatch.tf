@@ -1,4 +1,6 @@
 resource "aws_cloudwatch_log_group" "apprunner" {
+  count = var.enable_app_runner ? 1 : 0
+
   name              = "/aws/apprunner/${local.name_prefix}-backend"
   retention_in_days = 14
 }

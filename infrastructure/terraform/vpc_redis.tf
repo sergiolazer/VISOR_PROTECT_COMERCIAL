@@ -36,7 +36,7 @@ resource "aws_subnet" "private_b" {
 
 resource "aws_security_group" "redis" {
   name        = "${local.name_prefix}-redis"
-  description = "Redis ElastiCache — solo tráfico desde App Runner VPC connector"
+  description = "Redis ElastiCache - traffic from App Runner VPC connector only"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -69,6 +69,8 @@ resource "aws_security_group" "apprunner_connector" {
 }
 
 resource "aws_apprunner_vpc_connector" "main" {
+  count = var.enable_app_runner ? 1 : 0
+
   vpc_connector_name = "${local.name_prefix}-connector"
   subnets            = [aws_subnet.private_a.id, aws_subnet.private_b.id]
   security_groups    = [aws_security_group.apprunner_connector.id]

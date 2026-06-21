@@ -59,11 +59,11 @@ resource "aws_apprunner_service" "backend" {
   network_configuration {
     egress_configuration {
       egress_type       = "VPC"
-      vpc_connector_arn = aws_apprunner_vpc_connector.main.arn
+      vpc_connector_arn = aws_apprunner_vpc_connector.main[0].arn
     }
   }
 
-  auto_scaling_configuration_arn = aws_apprunner_auto_scaling_configuration_version.backend.arn
+  auto_scaling_configuration_arn = aws_apprunner_auto_scaling_configuration_version.backend[0].arn
 
   depends_on = [
     aws_ecr_repository.backend,
@@ -72,6 +72,8 @@ resource "aws_apprunner_service" "backend" {
 }
 
 resource "aws_apprunner_auto_scaling_configuration_version" "backend" {
+  count = var.enable_app_runner ? 1 : 0
+
   auto_scaling_configuration_name = "${local.name_prefix}-backend-as"
 
   max_concurrency = 100
