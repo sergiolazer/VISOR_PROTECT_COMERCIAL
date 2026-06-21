@@ -8,7 +8,8 @@ COPY package.json package-lock.json ./
 COPY shared/package.json ./shared/
 COPY backend/package.json ./backend/
 COPY frontend/package.json ./frontend/
-RUN npm ci
+# --ignore-scripts: prepare de shared corre tsc antes de copiar src/ (falla en Docker).
+RUN npm ci --ignore-scripts
 
 COPY shared ./shared
 COPY backend ./backend
