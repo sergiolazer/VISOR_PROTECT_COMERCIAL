@@ -72,11 +72,23 @@ cd infrastructure/terraform
 aws sts get-caller-identity   # verifica cuenta AWS
 
 bash scripts/phase2-secrets.sh export ~/visor-protect-secrets-phase2.json
+# Valida formato (mongodb+srv, JWT ≥32 chars, cloudinary JSON) — falla si hay placeholders
+bash scripts/phase2-secrets.sh validate ~/visor-protect-secrets-phase2.json
 ```
 
 O manualmente por consola: [Secrets Manager sa-east-1](https://sa-east-1.console.aws.amazon.com/secretsmanager/).
 
+**Reglas de validación automática** (`export` / `validate` / `import`):
+
+| Secreto | Formato exigido |
+|---------|-----------------|
+| `mongo-uri` | `mongodb://` o `mongodb+srv://…`, sin placeholder `REPLACE_*` |
+| `jwt-secret` | ≥ 32 caracteres, no `change-me-in-production` ni placeholders |
+| `cloudinary` | JSON con `cloud_name`, `api_key`, `api_secret` reales (no `REPLACE`) |
+
 ### Paso 2 — Variables GitHub
+
+Solo continúa si `validate` terminó en **OK**.
 
 **Settings → Secrets and variables → Actions → Variables**
 
