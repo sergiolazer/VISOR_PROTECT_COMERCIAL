@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Script de importación para sincronizar terraform.tfstate con AWS.
 # Si el recurso existe en AWS pero no en el state, lo importa.
-# El pipeline no se detiene si el recurso ya está importado o no existe en AWS.
+# Los fallos de import se registran; el pipeline solo continúa si el recurso no existe en AWS.
 
 set -uo pipefail
 
@@ -13,15 +13,15 @@ ENV="${TF_VAR_environment:-production}"
 PREFIX="${PROJECT}-${ENV}"
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 ECR_REPO="${PROJECT}-backend"
+OIDC_ARN="arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
+
+IMPORT_ERRORS=0
 
 in_state() {
   terraform state show -no-color "$1" >/dev/null 2>&1
 }
 
 # import_when_needed <terraform_address> <import_id> [aws_probe_command]
-# - Ya en state → omitir
-# - Probe falla (recurso no en AWS) → omitir
-# - Si no → terraform import (|| true)
 import_when_needed() {
   local addr="$1"
   local id="$2"
@@ -40,10 +40,25 @@ import_when_needed() {
   fi
 
   echo "[bootstrap-import] Importando $addr <- $id"
-  terraform import -input=false "$addr" "$id" || true
+  if terraform import -input=false "$addr" "$id"; then
+    if in_state "$addr"; then
+      echo "[bootstrap-import] OK: $addr"
+      return 0
+    fi
+    echo "::warning::Import reportó éxito pero $addr no está en state"
+  else
+    echo "::warning::No se pudo importar $addr (id=$id)"
+  fi
+
+  IMPORT_ERRORS=$((IMPORT_ERRORS + 1))
+  return 0
 }
 
 echo "[bootstrap-import] Sincronizando state (prefix=${PREFIX}, account=${ACCOUNT_ID})"
+
+if [ -z "${TF_VAR_github_org:-}" ] || [ -z "${TF_VAR_cors_origin:-}" ]; then
+  echo "::warning::TF_VAR_github_org o TF_VAR_cors_origin no definidos — el import de IAM puede fallar"
+fi
 
 # --- ECR ---
 import_when_needed \
@@ -67,7 +82,12 @@ import_when_needed \
   "${PREFIX}/cloudinary" \
   "aws secretsmanager describe-secret --secret-id ${PREFIX}/cloudinary"
 
-# --- IAM ---
+# --- IAM (OIDC antes que roles que referencian su ARN) ---
+import_when_needed \
+  'aws_iam_openid_connect_provider.github' \
+  "$OIDC_ARN" \
+  "aws iam get-open-id-connect-provider --open-id-connect-provider-arn ${OIDC_ARN}"
+
 import_when_needed \
   'aws_iam_role.apprunner_ecr_access' \
   "${PREFIX}-apprunner-ecr" \
@@ -84,9 +104,9 @@ import_when_needed \
   "aws iam get-role --role-name ${PREFIX}-github-deploy"
 
 import_when_needed \
-  'aws_iam_openid_connect_provider.github' \
-  "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com" \
-  "aws iam get-open-id-connect-provider --open-id-connect-provider-arn arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
+  'aws_iam_role_policy.github_deploy' \
+  "${PREFIX}-github-deploy:${PREFIX}-github-deploy" \
+  "aws iam get-role-policy --role-name ${PREFIX}-github-deploy --policy-name ${PREFIX}-github-deploy"
 
 # --- S3 ---
 import_when_needed \
@@ -171,4 +191,4 @@ if [ "${TF_VAR_enable_app_runner:-false}" = "true" ]; then
   fi
 fi
 
-echo "[bootstrap-import] Completado"
+echo "[bootstrap-import] Completado (import warnings: ${IMPORT_ERRORS})"

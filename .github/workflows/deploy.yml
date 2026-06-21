@@ -135,9 +135,15 @@ jobs:
             exit "$ec"
           fi
 
+      # Re-import antes del apply: el plan congelado (deploy.plan) no refleja imports
+      # ejecutados después del plan. Aplicamos contra el state actual.
+      - name: Bootstrap import (pre-apply reconcile)
+        if: github.ref == 'refs/heads/main'
+        run: bash infrastructure/terraform/scripts/bootstrap-import.sh
+
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
-        run: terraform -chdir=${{ env.TF_WORKING_DIR }} apply -input=false -auto-approve deploy.plan
+        run: terraform -chdir=${{ env.TF_WORKING_DIR }} apply -input=false -auto-approve
 
       - name: Persist Terraform state
         if: always() && github.ref == 'refs/heads/main'
