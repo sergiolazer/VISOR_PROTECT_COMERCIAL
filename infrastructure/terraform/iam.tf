@@ -72,6 +72,7 @@ resource "aws_iam_role_policy" "apprunner_instance" {
 }
 
 # IAM — GitHub Actions OIDC (CI/CD sin credenciales estáticas)
+# Thumbprints SHA-1 (40 hex) — cadena cruzada de GitHub (dos intermediarios posibles)
 
 resource "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
@@ -79,8 +80,8 @@ resource "aws_iam_openid_connect_provider" "github" {
   client_id_list = ["sts.amazonaws.com"]
 
   thumbprint_list = [
-    "6938fd4d98bab03fa0217a5d63977c7a7756156",
-    "1c58a3a8518e8759bf075b76b750d4f2df264fcd"
+    "6938fd4d98bab03faadb97b34396831e3780aea1",
+    "1c58a3a8518e8759bf075b76b750d4f2df264fcd",
   ]
 }
 
