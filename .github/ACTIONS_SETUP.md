@@ -13,12 +13,14 @@ Configura en **Settings → Secrets and variables → Actions** antes del primer
 
 | Nombre | Valor (fase 1) | Usado en |
 |--------|----------------|----------|
-| `GITHUB_ORG` | Tu org o usuario GitHub | `TF_VAR_github_org` |
-| `CORS_ORIGIN` | URL del frontend (ej. `https://app.tudominio.com.br`) | `TF_VAR_cors_origin` |
+| `GITHUB_ORG` | Tu org o usuario GitHub **(opcional)** | `TF_VAR_github_org` — default: `github.repository_owner` |
+| `CORS_ORIGIN` | URL del frontend **(opcional en fase 1)** | `TF_VAR_cors_origin` — default bootstrap: `http://localhost:5173` |
 | `ENABLE_APP_RUNNER` | `false` | `TF_VAR_enable_app_runner` |
-| `GITHUB_REPO` | `VISOR_PROTECT_COMERCIAL` (opcional) | `TF_VAR_github_repo` |
+| `GITHUB_REPO` | Nombre del repo **(opcional)** | `TF_VAR_github_repo` — default: nombre del repositorio |
 | `ECR_IMAGE_TAG` | `latest` (opcional) | `TF_VAR_ecr_image_tag` |
 | `AWS_REGION` | `sa-east-1` (opcional, redeploy manual) | deploy-production |
+
+> **Obligatorio antes del Push 2:** configura `CORS_ORIGIN` con la URL real del frontend cuando `ENABLE_APP_RUNNER=true`.
 
 ## Variables — Push 2 (activar App Runner)
 
