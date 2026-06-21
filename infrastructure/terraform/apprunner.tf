@@ -16,24 +16,24 @@ resource "aws_apprunner_service" "backend" {
         port = "3001"
 
         runtime_environment_variables = {
-          NODE_ENV                     = "production"
-          PORT                         = "3001"
-          CORS_ORIGIN                  = var.cors_origin
-          COOKIE_SECURE                = "true"
-          COOKIE_SAME_SITE             = "none"
-          REDIS_ENABLED                = "true"
-          REDIS_URL                    = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379"
-          MONGODB_CHANGE_STREAM        = "true"
-          ALERT_FILTER_TELEMETRY_DEBUG = "false"
-          ALERT_FILTER_TELEMETRY_PERSIST = "true"
+          NODE_ENV                         = "production"
+          PORT                             = "3001"
+          CORS_ORIGIN                      = var.cors_origin
+          COOKIE_SECURE                    = "true"
+          COOKIE_SAME_SITE                 = "none"
+          REDIS_ENABLED                    = "true"
+          REDIS_URL                        = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379"
+          MONGODB_CHANGE_STREAM            = "true"
+          ALERT_FILTER_TELEMETRY_DEBUG     = "false"
+          ALERT_FILTER_TELEMETRY_PERSIST   = "true"
         }
 
         runtime_environment_secrets = {
-          MONGO_URI              = aws_secretsmanager_secret.mongo_uri.arn
-          JWT_SECRET             = aws_secretsmanager_secret.jwt_secret.arn
-          CLOUDINARY_CLOUD_NAME  = "${aws_secretsmanager_secret.cloudinary.arn}:cloud_name::"
-          CLOUDINARY_API_KEY     = "${aws_secretsmanager_secret.cloudinary.arn}:api_key::"
-          CLOUDINARY_API_SECRET  = "${aws_secretsmanager_secret.cloudinary.arn}:api_secret::"
+          MONGO_URI             = aws_secretsmanager_secret.mongo_uri.arn
+          JWT_SECRET            = aws_secretsmanager_secret.jwt_secret.arn
+          CLOUDINARY_CLOUD_NAME = "${aws_secretsmanager_secret.cloudinary.arn}:cloud_name::"
+          CLOUDINARY_API_KEY    = "${aws_secretsmanager_secret.cloudinary.arn}:api_key::"
+          CLOUDINARY_API_SECRET = "${aws_secretsmanager_secret.cloudinary.arn}:api_secret::"
         }
       }
     }
