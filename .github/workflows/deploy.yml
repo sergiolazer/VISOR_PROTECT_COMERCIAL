@@ -1,0 +1,169 @@
+name: Production Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: sa-east-1
+  TF_WORKING_DIR: infrastructure/terraform
+
+# Secrets:  AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+# Variables: GITHUB_ORG, CORS_ORIGIN, ENABLE_APP_RUNNER, GITHUB_REPO, ECR_IMAGE_TAG
+
+jobs:
+  quality-gate:
+    name: Tests (quality gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck & integration tests
+        run: npm run test:ci
+
+  terraform:
+    name: Terraform (IaC)
+    runs-on: ubuntu-latest
+    needs: quality-gate
+    timeout-minutes: 30
+    outputs:
+      ecr_repository_url: ${{ steps.tf_outputs.outputs.ecr_repository_url }}
+      app_runner_service_arn: ${{ steps.tf_outputs.outputs.app_runner_service_arn }}
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: sa-east-1
+      TF_VAR_github_org: ${{ vars.GITHUB_ORG }}
+      TF_VAR_cors_origin: ${{ vars.CORS_ORIGIN }}
+      TF_VAR_github_repo: ${{ vars.GITHUB_REPO || 'VISOR_PROTECT_COMERCIAL' }}
+      TF_VAR_enable_app_runner: ${{ vars.ENABLE_APP_RUNNER || 'false' }}
+      TF_VAR_ecr_image_tag: ${{ vars.ECR_IMAGE_TAG || 'latest' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Terraform inputs
+        run: |
+          if [ -z "$TF_VAR_github_org" ] || [ -z "$TF_VAR_cors_origin" ]; then
+            echo "::error::Configura GitHub Variables: GITHUB_ORG y CORS_ORIGIN"
+            exit 1
+          fi
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.0
+          terraform_wrapper: false
+
+      - name: Terraform Format Check
+        run: terraform -chdir=${{ env.TF_WORKING_DIR }} fmt -check -recursive
+
+      - name: Terraform Init
+        run: terraform -chdir=${{ env.TF_WORKING_DIR }} init -input=false
+
+      - name: Terraform Validate
+        run: terraform -chdir=${{ env.TF_WORKING_DIR }} validate
+
+      - name: Terraform Plan
+        run: terraform -chdir=${{ env.TF_WORKING_DIR }} plan -input=false -out=deploy.plan
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main'
+        run: terraform -chdir=${{ env.TF_WORKING_DIR }} apply -input=false -auto-approve deploy.plan
+
+      - name: Export Terraform outputs
+        id: tf_outputs
+        run: |
+          ECR_URL=$(terraform -chdir=${{ env.TF_WORKING_DIR }} output -raw ecr_repository_url)
+          echo "ecr_repository_url=$ECR_URL" >> "$GITHUB_OUTPUT"
+
+          APP_ARN=$(terraform -chdir=${{ env.TF_WORKING_DIR }} output -raw app_runner_service_arn 2>/dev/null || true)
+          if [ "$APP_ARN" = "null" ] || [ -z "$APP_ARN" ]; then
+            APP_ARN=""
+          fi
+          echo "app_runner_service_arn=$APP_ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Upload plan artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ github.sha }}
+          path: ${{ env.TF_WORKING_DIR }}/deploy.plan
+          retention-days: 14
+          if-no-files-found: ignore
+
+  deploy-app:
+    name: Build → ECR → App Runner
+    runs-on: ubuntu-latest
+    needs: terraform
+    if: github.ref == 'refs/heads/main' && needs.terraform.result == 'success'
+    timeout-minutes: 30
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: sa-east-1
+      ECR_REPOSITORY_URL: ${{ needs.terraform.outputs.ecr_repository_url }}
+      APP_RUNNER_SERVICE_ARN: ${{ needs.terraform.outputs.app_runner_service_arn }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push backend image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          if [ -z "$ECR_REPOSITORY_URL" ]; then
+            echo "::error::ECR repository URL vacío — revisa outputs de Terraform"
+            exit 1
+          fi
+
+          docker build -t "$ECR_REPOSITORY_URL:$IMAGE_TAG" .
+          docker tag "$ECR_REPOSITORY_URL:$IMAGE_TAG" "$ECR_REPOSITORY_URL:latest"
+          docker push "$ECR_REPOSITORY_URL:$IMAGE_TAG"
+          docker push "$ECR_REPOSITORY_URL:latest"
+          echo "Imagen publicada: $ECR_REPOSITORY_URL:$IMAGE_TAG"
+
+      - name: Trigger App Runner deployment (rolling update)
+        if: env.APP_RUNNER_SERVICE_ARN != ''
+        run: |
+          aws apprunner start-deployment --service-arn "$APP_RUNNER_SERVICE_ARN"
+          echo "App Runner deployment iniciado: $APP_RUNNER_SERVICE_ARN"
+
+      - name: App Runner skip notice
+        if: env.APP_RUNNER_SERVICE_ARN == ''
+        run: |
+          echo "::notice::App Runner no desplegado (ENABLE_APP_RUNNER=false o primer bootstrap)."
+          echo "Tras la primera imagen en ECR, configura ENABLE_APP_RUNNER=true y vuelve a ejecutar el workflow."

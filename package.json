@@ -1,0 +1,21 @@
+{
+  "name": "visor-protect-comercio",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "build": "npm run build -w @visor-protect/shared && npm run build -w @visor-protect/backend && npm run build -w @visor-protect/frontend",
+    "dev:backend": "npm run dev -w @visor-protect/backend",
+    "dev:frontend": "npm run dev -w @visor-protect/frontend",
+    "seed:mongo": "npm run seed:mongo -w @visor-protect/backend",
+    "typecheck": "npm run typecheck -w @visor-protect/shared && npm run typecheck -w @visor-protect/backend && npm run typecheck -w @visor-protect/frontend",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "test:integration": "npm run test:integration -w @visor-protect/backend",
+    "test:ci": "npm run typecheck && npm run test:integration"
+  }
+}

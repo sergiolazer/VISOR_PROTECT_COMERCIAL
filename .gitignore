@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+dist/
+build/
+uploads/
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Terraform (local state — use remote backend in CI)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+*.tfplan
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+.cursor/
