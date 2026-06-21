@@ -16,16 +16,16 @@ resource "aws_apprunner_service" "backend" {
         port = "3001"
 
         runtime_environment_variables = {
-          NODE_ENV                         = "production"
-          PORT                             = "3001"
-          CORS_ORIGIN                      = var.cors_origin
-          COOKIE_SECURE                    = "true"
-          COOKIE_SAME_SITE                 = "none"
-          REDIS_ENABLED                    = "true"
-          REDIS_URL                        = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379"
-          MONGODB_CHANGE_STREAM            = "true"
-          ALERT_FILTER_TELEMETRY_DEBUG     = "false"
-          ALERT_FILTER_TELEMETRY_PERSIST   = "true"
+          NODE_ENV                       = "production"
+          PORT                           = "3001"
+          CORS_ORIGIN                    = var.cors_origin
+          COOKIE_SECURE                  = "true"
+          COOKIE_SAME_SITE               = "none"
+          REDIS_ENABLED                  = "true"
+          REDIS_URL                      = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379"
+          MONGODB_CHANGE_STREAM          = "true"
+          ALERT_FILTER_TELEMETRY_DEBUG   = "false"
+          ALERT_FILTER_TELEMETRY_PERSIST = "true"
         }
 
         runtime_environment_secrets = {
