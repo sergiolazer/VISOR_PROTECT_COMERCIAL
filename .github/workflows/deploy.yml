@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  AWS_REGION: sa-east-1
+  AWS_REGION: ${{ vars.AWS_REGION || 'sa-east-1' }}
   TF_WORKING_DIR: infrastructure/terraform
 
 # Secrets:  AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
@@ -52,10 +52,11 @@ jobs:
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_DEFAULT_REGION: sa-east-1
+      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'sa-east-1' }}
       TF_VAR_github_repo: ${{ vars.GITHUB_REPO || github.event.repository.name }}
       TF_VAR_enable_app_runner: ${{ vars.ENABLE_APP_RUNNER || 'false' }}
       TF_VAR_ecr_image_tag: ${{ vars.ECR_IMAGE_TAG || 'latest' }}
+      TF_VAR_aws_region: ${{ vars.AWS_REGION || 'sa-east-1' }}
 
     steps:
       - name: Checkout
@@ -66,6 +67,7 @@ jobs:
           ORG="${{ vars.GITHUB_ORG }}"
           CORS="${{ vars.CORS_ORIGIN }}"
           ENABLE_AR="${{ vars.ENABLE_APP_RUNNER || 'false' }}"
+          AWS_REG="${{ vars.AWS_REGION || 'sa-east-1' }}"
 
           if [ -z "$ORG" ]; then
             ORG="${{ github.repository_owner }}"
@@ -78,6 +80,13 @@ jobs:
             echo "::warning::Define CORS_ORIGIN (URL del frontend) antes de tráfico real o ENABLE_APP_RUNNER=true"
           fi
 
+          if [ "$ENABLE_AR" = "true" ] && [ "$AWS_REG" = "sa-east-1" ]; then
+            echo "::error::App Runner no está disponible en sa-east-1."
+            echo "::error::Configura la variable GitHub AWS_REGION=us-east-1 antes de ENABLE_APP_RUNNER=true."
+            echo "::error::Ver docs/PHASE_2.md — la fase 2 migra el stack a us-east-1."
+            exit 1
+          fi
+
           if [ "$ENABLE_AR" = "true" ] && [ "$CORS" = "http://localhost:5173" ] && [ -z "${{ vars.CORS_ORIGIN }}" ]; then
             echo "::error::CORS_ORIGIN es obligatorio cuando ENABLE_APP_RUNNER=true"
             echo "::error::Configura GitHub Variable CORS_ORIGIN con la URL del frontend (ej. https://app.tudominio.com.br)"
@@ -86,14 +95,30 @@ jobs:
 
           echo "TF_VAR_github_org=$ORG" >> "$GITHUB_ENV"
           echo "TF_VAR_cors_origin=$CORS" >> "$GITHUB_ENV"
-          echo "Terraform github_org=$ORG cors_origin=$CORS enable_app_runner=$ENABLE_AR"
+          echo "TF_VAR_aws_region=$AWS_REG" >> "$GITHUB_ENV"
+          echo "Terraform region=$AWS_REG github_org=$ORG cors_origin=$CORS enable_app_runner=$ENABLE_AR"
 
       - name: Download Terraform state
+        id: tf_state_download
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: terraform-state
           path: infrastructure/terraform
+
+      - name: Verify Terraform state restored
+        run: |
+          STATE="${{ env.TF_WORKING_DIR }}/terraform.tfstate"
+          if [ -f "$STATE" ]; then
+            SERIAL=$(jq -r '.serial // "?"' "$STATE")
+            COUNT=$(jq '[.resources[]] | length' "$STATE")
+            REGION=$(jq -r '.resources[0].instances[0].attributes.region // empty' "$STATE" | head -1)
+            echo "::notice::State restaurado desde artifact (serial=$SERIAL, resources=$COUNT, sample_region=${REGION:-n/a})"
+            jq -r '[.resources[].type] | unique | .[]' "$STATE" | sort | tr '\n' ' '
+            echo ""
+          else
+            echo "::warning::Sin artifact terraform-state — primer run o artifact expirado (>90d). State vacío; bootstrap-import adoptará recursos existentes."
+          fi
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -156,6 +181,20 @@ jobs:
           retention-days: 90
           if-no-files-found: ignore
 
+      - name: Verify Terraform state persisted
+        if: github.ref == 'refs/heads/main' && success()
+        run: |
+          STATE="${{ env.TF_WORKING_DIR }}/terraform.tfstate"
+          if [ ! -f "$STATE" ]; then
+            echo "::error::terraform.tfstate no encontrado tras apply — el artifact no se persistirá correctamente"
+            exit 1
+          fi
+          SERIAL=$(jq -r '.serial' "$STATE")
+          COUNT=$(jq '[.resources[]] | length' "$STATE")
+          echo "::notice::State persistido (serial=$SERIAL, resource_instances=$COUNT)"
+          echo "Tipos de recurso en state:"
+          jq -r '[.resources[].type] | unique | .[]' "$STATE" | sort
+
       - name: Export Terraform outputs
         id: tf_outputs
         run: |
@@ -186,7 +225,7 @@ jobs:
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_DEFAULT_REGION: sa-east-1
+      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'sa-east-1' }}
       ECR_REPOSITORY_URL: ${{ needs.terraform.outputs.ecr_repository_url }}
       APP_RUNNER_SERVICE_ARN: ${{ needs.terraform.outputs.app_runner_service_arn }}
 

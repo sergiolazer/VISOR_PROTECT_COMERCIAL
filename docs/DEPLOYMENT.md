@@ -79,6 +79,8 @@ Si falla cualquier paso, **no se despliega**.
 
 Workflow unificado: `.github/workflows/deploy.yml`
 
+**Fase 2 (App Runner):** ver checklist en [PHASE_2.md](./PHASE_2.md).
+
 ```mermaid
 flowchart LR
   A[npm run test:ci] --> B[Terraform plan/apply]
