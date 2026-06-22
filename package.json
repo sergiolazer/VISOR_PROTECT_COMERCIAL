@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "build": "npm run build -w @visor-protect/shared && npm run build -w @visor-protect/backend && npm run build -w @visor-protect/frontend",
-    "build:frontend": "npm run build -w @visor-protect/shared && npm run build -w @visor-protect/frontend",
+    "build-web": "npm run build -w @visor-protect/shared && npm run build -w @visor-protect/frontend",
     "dev:backend": "npm run dev -w @visor-protect/backend",
     "dev:frontend": "npm run dev -w @visor-protect/frontend",
     "seed:mongo": "npm run seed:mongo -w @visor-protect/backend",

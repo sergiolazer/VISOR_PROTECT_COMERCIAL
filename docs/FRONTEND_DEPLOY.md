@@ -53,7 +53,7 @@ flowchart LR
 |-------|-------|
 | Framework Preset | Other |
 | Install Command | `npm ci` |
-| Build Command | `npm run build:frontend` |
+| Build Command | `npm run build -w @visor-protect/shared && npm run build -w @visor-protect/frontend` |
 | Output Directory | `frontend/dist` |
 | Node.js Version | **24** (Settings → General → Node.js Version) |
 
@@ -98,7 +98,7 @@ Usar `https://app.tudominio.com.br` como `CORS_ORIGIN`.
 
 ```bash
 npm ci
-npm run build:frontend
+npm run build-web
 npx serve frontend/dist
 ```
 
