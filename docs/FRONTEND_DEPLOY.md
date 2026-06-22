@@ -54,7 +54,7 @@ flowchart LR
 |-------|-------|
 | Framework Preset | Other |
 | Install Command | `npm ci` |
-| Build Command | *(vacío — usa `vercel.json` → `npm run vercel-build`)* |
+| Build Command | *(vacío — `vercel.json` ejecuta build con `-w`)* |
 | Output Directory | `dist` (Vite escribe en raíz cuando `VERCEL=1`) |
 | Node.js Version | **24** (Settings → General → Node.js Version) |
 
@@ -135,7 +135,7 @@ El frontend ya usa `withCredentials: true` en Socket.io y fetch con cookies.
 
 ### `No Output Directory named "dist" found`
 
-1. **Root Directory** debe ser **`.`** (raíz), no `frontend`.
+1. **Root Directory** debe ser **`.`** (raíz), no `frontend`. Si está en `frontend`, npm busca scripts ahí y falla.
 2. **Output Directory** = `dist` o déjalo vacío (usa `vercel.json`).
 3. **Build Command** vacío o `npm run vercel-build` — no uses `frontend/dist` como output.
 4. Con `VERCEL=1`, Vite escribe en `/dist` en la raíz (ver `frontend/vite.config.ts`).
