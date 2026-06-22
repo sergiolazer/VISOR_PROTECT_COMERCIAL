@@ -2,7 +2,8 @@
 
 Configura en **Settings → Secrets and variables → Actions** antes del primer push a `main`.
 
-Guía detallada fase 2: [docs/PHASE_2.md](../docs/PHASE_2.md)
+Guía detallada fase 2: [docs/PHASE_2.md](../docs/PHASE_2.md)  
+Frontend (CORS_ORIGIN): [docs/FRONTEND_DEPLOY.md](../docs/FRONTEND_DEPLOY.md)
 
 ## Secrets (Repository secrets)
 

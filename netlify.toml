@@ -1,0 +1,13 @@
+# Alternativa a Vercel — importar repo en https://app.netlify.com
+
+[build]
+  command = "npm ci && npm run build:frontend"
+  publish = "frontend/dist"
+
+[build.environment]
+  NODE_VERSION = "24"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

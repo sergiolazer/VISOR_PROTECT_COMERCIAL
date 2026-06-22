@@ -42,17 +42,21 @@ Guarda una copia local segura — los necesitarás de nuevo tras la migración a
 - Network Access: permitir `0.0.0.0/0` durante bootstrap o IPs de salida de App Runner.
 - Índices 2dsphere y TTL (el backend ejecuta `syncMongoIndexes()` al arrancar).
 
-### 3. Variables GitHub (Settings → Actions → Variables)
+### 3. Frontend en producción
+
+Despliega la Web App antes de fijar `CORS_ORIGIN`. Ver **[FRONTEND_DEPLOY.md](./FRONTEND_DEPLOY.md)**.
+
+### 4. Variables GitHub (Settings → Actions → Variables)
 
 | Variable | Valor fase 2 | Obligatorio |
 |----------|--------------|-------------|
 | `AWS_REGION` | `us-east-1` | Sí |
 | `ENABLE_APP_RUNNER` | `true` | Sí |
-| `CORS_ORIGIN` | URL del frontend, ej. `https://app.tudominio.com.br` | Sí |
+| `CORS_ORIGIN` | URL del frontend, ej. `https://app.tudominio.com.br` | Sí — ver [FRONTEND_DEPLOY.md](./FRONTEND_DEPLOY.md) |
 | `GITHUB_ORG` | Tu usuario/org (opcional si coincide con el repo) | No |
 | `ECR_IMAGE_TAG` | `latest` | No |
 
-### 4. Verificar artifact `terraform-state`
+### 5. Verificar artifact `terraform-state`
 
 1. GitHub → **Actions** → último run de *Production Deploy* → **Artifacts**.
 2. Debe existir `terraform-state` (retención 90 días).
@@ -86,7 +90,15 @@ O manualmente por consola: [Secrets Manager sa-east-1](https://sa-east-1.console
 | `jwt-secret` | ≥ 32 caracteres, no `change-me-in-production` ni placeholders |
 | `cloudinary` | JSON con `cloud_name`, `api_key`, `api_secret` reales (no `REPLACE`) |
 
-### Paso 2 — Variables GitHub
+### Paso 2 — Desplegar frontend (obtener `CORS_ORIGIN`)
+
+Guía completa: **[FRONTEND_DEPLOY.md](./FRONTEND_DEPLOY.md)**.
+
+1. Conectar el repo en [Vercel](https://vercel.com) (usa `vercel.json` en la raíz).
+2. Primer deploy → copiar URL, ej. `https://visor-protect-comercial.vercel.app`.
+3. Esa URL será tu **`CORS_ORIGIN`** en el paso siguiente.
+
+### Paso 3 — Variables GitHub
 
 Solo continúa si `validate` terminó en **OK**.
 
@@ -96,9 +108,9 @@ Solo continúa si `validate` terminó en **OK**.
 |----------|-------|
 | `AWS_REGION` | `us-east-1` |
 | `ENABLE_APP_RUNNER` | `true` |
-| `CORS_ORIGIN` | URL del **frontend** (ej. `https://app.tudominio.com.br`) |
+| `CORS_ORIGIN` | URL del **frontend** del paso 2 (sin `/` final) |
 
-### Paso 3 — Disparar deploy
+### Paso 4 — Disparar deploy
 
 ```bash
 # Opción A: push vacío
@@ -110,7 +122,7 @@ git push origin main
 
 Revisa el plan Terraform: destruye recursos en `sa-east-1` y crea en `us-east-1`.
 
-### Paso 4 — Importar secretos (`us-east-1`)
+### Paso 5 — Importar secretos (`us-east-1`)
 
 Tras apply exitoso (secretos vacíos creados por Terraform):
 
@@ -118,7 +130,7 @@ Tras apply exitoso (secretos vacíos creados por Terraform):
 bash infrastructure/terraform/scripts/phase2-secrets.sh import ~/visor-protect-secrets-phase2.json us-east-1
 ```
 
-### Paso 5 — Verificar salud
+### Paso 6 — Verificar salud
 
 URL en logs del job *Terraform* → output `app_runner_service_url`, o:
 
@@ -132,7 +144,7 @@ curl -s "https://<SERVICE_URL>/health" | jq .
 
 Esperado: `"mongodb_connected": true`, `"alert_broker": "redis"`.
 
-### Paso 6 — Frontend
+### Paso 7 — Frontend — apuntar al backend
 
 Actualiza la URL del API en el frontend (no `CORS_ORIGIN`):
 

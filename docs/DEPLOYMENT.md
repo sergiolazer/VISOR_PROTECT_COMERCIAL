@@ -79,7 +79,8 @@ Si falla cualquier paso, **no se despliega**.
 
 Workflow unificado: `.github/workflows/deploy.yml`
 
-**Fase 2 (App Runner):** ver checklist en [PHASE_2.md](./PHASE_2.md).
+**Fase 2 (App Runner):** ver [PHASE_2.md](./PHASE_2.md).  
+**Frontend (CORS_ORIGIN):** ver [FRONTEND_DEPLOY.md](./FRONTEND_DEPLOY.md).
 
 ```mermaid
 flowchart LR
