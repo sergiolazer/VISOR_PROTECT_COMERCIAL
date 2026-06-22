@@ -46,6 +46,7 @@ flowchart LR
 2. Importar `sergiolazer/VISOR_PROTECT_COMERCIAL`.
 3. **Root Directory:** dejar **`.`** (raíz del monorepo).
 4. Vercel detecta `vercel.json` en la raíz.
+5. **Settings → Build & Development:** Output Directory = `dist` (o vacío para usar `vercel.json`).
 
 ### 2. Build settings (verificar)
 
@@ -54,7 +55,7 @@ flowchart LR
 | Framework Preset | Other |
 | Install Command | `npm ci` |
 | Build Command | `npm run build -w @visor-protect/shared && npm run build -w @visor-protect/frontend` |
-| Output Directory | `frontend/dist` |
+| Output Directory | `dist` (Vercel copia `frontend/dist` → `dist` en el build) |
 | Node.js Version | **24** (Settings → General → Node.js Version) |
 
 ### 3. Environment Variables (primer deploy)
