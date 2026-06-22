@@ -54,8 +54,8 @@ flowchart LR
 |-------|-------|
 | Framework Preset | Other |
 | Install Command | `npm ci` |
-| Build Command | `npm run build -w @visor-protect/shared && npm run build -w @visor-protect/frontend` |
-| Output Directory | `dist` (Vercel copia `frontend/dist` → `dist` en el build) |
+| Build Command | *(vacío — usa `vercel.json` → `npm run vercel-build`)* |
+| Output Directory | `dist` (Vite escribe en raíz cuando `VERCEL=1`) |
 | Node.js Version | **24** (Settings → General → Node.js Version) |
 
 ### 3. Environment Variables (primer deploy)
@@ -128,6 +128,20 @@ El frontend ya usa `withCredentials: true` en Socket.io y fetch con cookies.
 - [ ] `VITE_API_URL` + `VITE_SOCKET_URL` = URL App Runner
 - [ ] Redeploy frontend
 - [ ] Login y chat funcionan en producción
+
+---
+
+## Troubleshooting Vercel
+
+### `No Output Directory named "dist" found`
+
+1. **Root Directory** debe ser **`.`** (raíz), no `frontend`.
+2. **Output Directory** = `dist` o déjalo vacío (usa `vercel.json`).
+3. **Build Command** vacío o `npm run vercel-build` — no uses `frontend/dist` como output.
+4. Con `VERCEL=1`, Vite escribe en `/dist` en la raíz (ver `frontend/vite.config.ts`).
+5. **Redeploy** tras el último push a `main`.
+
+Si el dashboard tiene valores antiguos de un deploy fallido, en **Settings → General → Build & Development** pulsa **Reset** o alinea con la tabla de arriba.
 
 ---
 
