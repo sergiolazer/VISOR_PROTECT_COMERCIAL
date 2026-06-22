@@ -1,5 +1,6 @@
 resource "aws_s3_bucket" "media" {
-  bucket = "${local.name_prefix}-media-${data.aws_caller_identity.current.account_id}"
+  provider = aws.s3
+  bucket   = "${local.name_prefix}-media-${data.aws_caller_identity.current.account_id}"
 
   lifecycle {
     prevent_destroy = true
@@ -7,7 +8,8 @@ resource "aws_s3_bucket" "media" {
 }
 
 resource "aws_s3_bucket_public_access_block" "media" {
-  bucket = aws_s3_bucket.media.id
+  provider = aws.s3
+  bucket   = aws_s3_bucket.media.id
 
   block_public_acls       = true
   block_public_policy     = true
@@ -16,7 +18,8 @@ resource "aws_s3_bucket_public_access_block" "media" {
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "media" {
-  bucket = aws_s3_bucket.media.id
+  provider = aws.s3
+  bucket   = aws_s3_bucket.media.id
 
   rule {
     apply_server_side_encryption_by_default {
@@ -26,7 +29,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "media" {
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "media" {
-  bucket = aws_s3_bucket.media.id
+  provider = aws.s3
+  bucket   = aws_s3_bucket.media.id
 
   rule {
     id     = "chat-images-expire-7-days"

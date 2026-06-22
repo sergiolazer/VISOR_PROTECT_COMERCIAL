@@ -112,7 +112,7 @@ import_when_needed \
 import_when_needed \
   'aws_s3_bucket.media' \
   "${PREFIX}-media-${ACCOUNT_ID}" \
-  "aws s3api head-bucket --bucket ${PREFIX}-media-${ACCOUNT_ID}"
+  "aws s3api head-bucket --bucket ${PREFIX}-media-${ACCOUNT_ID} --region sa-east-1"
 
 # --- ElastiCache ---
 import_when_needed \

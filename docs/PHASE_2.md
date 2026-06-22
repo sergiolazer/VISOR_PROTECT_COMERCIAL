@@ -20,7 +20,18 @@ Impacto esperado:
 - Nueva URL de ECR → el workflow volverá a hacer `docker push`.
 - Nuevo Redis (caché vacía; aceptable para alertas).
 - Nuevos secretos en Secrets Manager → **copiar valores** desde `sa-east-1` antes o justo después del apply.
+- **S3 media permanece en `sa-east-1`** (nombre global; App Runner en `us-east-1` accede vía IAM).
 - Recursos huérfanos en `sa-east-1` solo si el apply falla a medias — revisar consola AWS.
+
+### Activar App Runner en la cuenta (obligatorio una vez)
+
+Antes del primer apply con `ENABLE_APP_RUNNER=true`:
+
+1. Abre [App Runner en us-east-1](https://us-east-1.console.aws.amazon.com/apprunner/home?region=us-east-1).
+2. Si es la primera vez, AWS pedirá **aceptar términos / suscripción al servicio**.
+3. Opcional: crea un servicio de prueba vacío y bórralo — confirma que la cuenta puede usar App Runner.
+
+Sin este paso verás: `SubscriptionRequiredException: The AWS Access Key Id needs a subscription for the service`.
 
 ## Checklist previo
 
@@ -161,11 +172,11 @@ Guarda `APP_RUNNER_SERVICE_ARN` en variables GitHub para redeploys manuales.
 
 ## Limpieza `sa-east-1` (opcional)
 
-Si el apply de fase 2 terminó bien, los recursos de fase 1 en `sa-east-1` deberían haberse destruido por Terraform. Revisa manualmente:
+Tras fase 2, **S3 media sigue en `sa-east-1` a propósito**. El resto (ECR, Redis, VPC de fase 1) debería haberse destruido o quedar huérfano si el apply fue parcial. Revisa:
 
-- ECR `visor-protect-backend`
+- ECR `visor-protect-backend` (región antigua)
 - ElastiCache `visor-protect-production-redis`
 - VPC `visor-protect-production-vpc`
-- Secrets Manager `visor-protect-production/*`
+- **No borrar** S3 `visor-protect-production-media-*` salvo migración planificada
 
-Elimina manualmente cualquier recurso huérfano para evitar costos.
+Elimina manualmente recursos huérfanos para evitar costos duplicados.

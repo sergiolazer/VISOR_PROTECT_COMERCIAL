@@ -30,6 +30,20 @@ provider "aws" {
   }
 }
 
+# Bucket media: nombre global S3; creado en fase 1 (sa-east-1). No migra con App Runner.
+provider "aws" {
+  alias  = "s3"
+  region = "sa-east-1"
+
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      Environment = var.environment
+      ManagedBy   = "terraform"
+    }
+  }
+}
+
 data "aws_caller_identity" "current" {}
 
 data "aws_availability_zones" "available" {
