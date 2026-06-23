@@ -39,6 +39,18 @@ plan_has_drift_creates() {
   ' >/dev/null 2>&1
 }
 
+plan_has_subnet_replace() {
+  terraform show -json pre-apply.plan 2>/dev/null | jq -e '
+    [.resource_changes[]
+      | select(
+          ([.change.actions[]] | any(. == "delete" or . == "destroy"))
+          and ([.change.actions[]] | any(. == "create"))
+        )
+      | select(.address | test("aws_subnet\\."))
+    ] | length > 0
+  ' >/dev/null 2>&1
+}
+
 plan_modifies_redis_cluster() {
   terraform show -json pre-apply.plan | jq -e '
     [.resource_changes[]
@@ -66,7 +78,11 @@ for round in $(seq 1 "$MAX_ROUNDS"); do
   set -e
 
   if [ "$ec" -eq 1 ]; then
-    echo "::error::terraform plan falló antes del apply"
+    if [ "$round" -lt "$MAX_ROUNDS" ]; then
+      echo "[pre-apply] Plan exit 1 (¿VPC/subnet replace?) — re-sync e reintentar..."
+      continue
+    fi
+    echo "::error::terraform plan falló tras ${MAX_ROUNDS} rondas"
     exit 1
   fi
 
@@ -87,8 +103,8 @@ for round in $(seq 1 "$MAX_ROUNDS"); do
     continue
   fi
 
-  if plan_has_drift_creates || plan_modifies_redis_cluster; then
-    echo "[pre-apply] Drift detectado (create/update Redis SG) — re-import en siguiente ronda..."
+  if plan_has_drift_creates || plan_modifies_redis_cluster || plan_has_subnet_replace; then
+    echo "[pre-apply] Drift detectado (create/replace red o ECS) — re-import en siguiente ronda..."
     terraform show -no-color pre-apply.plan | grep -E 'create|aws_iam_role\.ecs|aws_lb_target_group|aws_elasticache_cluster\.redis|aws_security_group\.redis|aws_vpc\.main' || true
     continue
   fi

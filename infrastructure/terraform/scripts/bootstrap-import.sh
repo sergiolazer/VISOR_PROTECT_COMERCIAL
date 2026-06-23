@@ -121,20 +121,46 @@ reconcile_resource_id() {
 
 discover_subnet_in_vpc() {
   local cidr="$1"
-  local name_tag="$2"
-  local subnet_id
 
-  subnet_id="$(aws ec2 describe-subnets \
+  aws ec2 describe-subnets \
     --filters "Name=vpc-id,Values=${VPC_ID}" "Name=cidr-block,Values=${cidr}" \
-    --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")"
+    --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo ""
+}
 
-  if [ -z "$subnet_id" ] || [ "$subnet_id" = "None" ]; then
-    subnet_id="$(aws ec2 describe-subnets \
-      --filters "Name=tag:Name,Values=${name_tag}" \
-      --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")"
+subnet_aws_vpc_id() {
+  local subnet_id="$1"
+
+  [ -z "$subnet_id" ] || [ "$subnet_id" = "None" ] && return 0
+
+  aws ec2 describe-subnets --subnet-ids "$subnet_id" \
+    --query 'Subnets[0].VpcId' --output text 2>/dev/null || echo ""
+}
+
+# Alinea subnet al CIDR dentro de la VPC ancla (Redis). Si el state apunta a otra VPC, state rm sin destroy.
+reconcile_subnet_for_vpc() {
+  local addr="$1"
+  local cidr="$2"
+  local target_subnet state_subnet state_vpc
+
+  target_subnet="$(discover_subnet_in_vpc "$cidr")"
+
+  if in_state "$addr"; then
+    state_subnet="$(state_resource_id "$addr")"
+    state_vpc="$(subnet_aws_vpc_id "$state_subnet")"
+    if [ -n "$state_subnet" ] && [ -n "$state_vpc" ] && [ "$state_vpc" != "None" ] && [ "$state_vpc" != "$VPC_ID" ]; then
+      echo "[bootstrap-import] $addr en VPC $state_vpc (state) != ancla $VPC_ID — state rm sin destroy"
+      terraform state rm "$addr" 2>/dev/null || true
+    elif [ -n "$target_subnet" ] && [ "$target_subnet" != "None" ] && [ "$state_subnet" != "$target_subnet" ]; then
+      echo "[bootstrap-import] $addr id en state ($state_subnet) != AWS en VPC ancla ($target_subnet)"
+      terraform state rm "$addr" 2>/dev/null || true
+    fi
   fi
 
-  echo "$subnet_id"
+  if [ -n "$target_subnet" ] && [ "$target_subnet" != "None" ]; then
+    reconcile_resource_id "$addr" "$target_subnet"
+  else
+    echo "[bootstrap-import] Sin $cidr en VPC ancla $VPC_ID — create pendiente para $addr"
+  fi
 }
 
 discover_sg_in_vpc() {
@@ -159,11 +185,11 @@ import_compute_network() {
 
   echo "[bootstrap-import] Red pública ECS (VPC=${VPC_ID})..."
 
-  pub_a="$(discover_subnet_in_vpc "10.20.10.0/24" "${PREFIX}-public-a")"
-  reconcile_resource_id 'aws_subnet.public_a[0]' "$pub_a"
+  pub_a="$(discover_subnet_in_vpc "10.20.10.0/24")"
+  reconcile_subnet_for_vpc 'aws_subnet.public_a[0]' "10.20.10.0/24"
 
-  pub_b="$(discover_subnet_in_vpc "10.20.11.0/24" "${PREFIX}-public-b")"
-  reconcile_resource_id 'aws_subnet.public_b[0]' "$pub_b"
+  pub_b="$(discover_subnet_in_vpc "10.20.11.0/24")"
+  reconcile_subnet_for_vpc 'aws_subnet.public_b[0]' "10.20.11.0/24"
 
   igw="$(aws ec2 describe-internet-gateways \
     --filters "Name=attachment.vpc-id,Values=${VPC_ID}" \
@@ -437,17 +463,11 @@ VPC_ID="$(discover_vpc_id)"
 if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   reconcile_resource_id 'aws_vpc.main' "$VPC_ID"
 
-  SUBNET_A="$(discover_subnet_in_vpc "10.20.1.0/24" "${PREFIX}-private-a")"
-  if [ -z "$SUBNET_A" ] || [ "$SUBNET_A" = "None" ]; then
-    if aws ec2 describe-subnets --subnet-ids subnet-0f19bd9d7914446de >/dev/null 2>&1; then
-      SUBNET_A="subnet-0f19bd9d7914446de"
-      echo "[bootstrap-import] Subnet A por ID conocido: $SUBNET_A"
-    fi
-  fi
-  reconcile_resource_id 'aws_subnet.private_a' "$SUBNET_A"
+  reconcile_subnet_for_vpc 'aws_subnet.private_a' "10.20.1.0/24"
+  SUBNET_A="$(discover_subnet_in_vpc "10.20.1.0/24")"
 
-  SUBNET_B="$(discover_subnet_in_vpc "10.20.2.0/24" "${PREFIX}-private-b")"
-  reconcile_resource_id 'aws_subnet.private_b' "$SUBNET_B"
+  reconcile_subnet_for_vpc 'aws_subnet.private_b' "10.20.2.0/24"
+  SUBNET_B="$(discover_subnet_in_vpc "10.20.2.0/24")"
 
   SG_CONN="$(discover_sg_in_vpc "${PREFIX}-ecs")"
   reconcile_resource_id 'aws_security_group.ecs_tasks[0]' "$SG_CONN"
