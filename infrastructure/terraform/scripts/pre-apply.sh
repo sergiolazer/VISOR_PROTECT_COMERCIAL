@@ -1,14 +1,28 @@
 #!/usr/bin/env bash
-# Pre-apply atómico con reintentos: import → reconcile → plan → guard → apply.
+# Pre-apply atómico: import → reconcile → plan → guard → apply (máx. 3 rondas).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TF_DIR="${ROOT}/infrastructure/terraform"
 SCRIPTS="${ROOT}/infrastructure/terraform/scripts"
-MAX_ROUNDS=5
+MAX_ROUNDS="${TF_PREAPPLY_MAX_ROUNDS:-3}"
+PLAN_TIMEOUT="${TF_PLAN_TIMEOUT_SEC:-600}"
 
 export TF_VAR_enable_ecs="${TF_VAR_enable_ecs:-false}"
 export TF_VAR_enable_app_runner="${TF_VAR_enable_app_runner:-false}"
+
+tf_plan() {
+  timeout "$PLAN_TIMEOUT" terraform plan -input=false -no-color -out=pre-apply.plan -detailed-exitcode \
+    -var="enable_ecs=${TF_VAR_enable_ecs}" \
+    -var="enable_app_runner=${TF_VAR_enable_app_runner}"
+}
+
+sync_state() {
+  cd "$ROOT"
+  bash "$SCRIPTS/bootstrap-import.sh"
+  bash "$SCRIPTS/reconcile-state.sh"
+  cd "$TF_DIR"
+}
 
 plan_delete_addresses() {
   terraform show -json pre-apply.plan | jq -r '
@@ -61,25 +75,39 @@ plan_modifies_redis_cluster() {
   ' >/dev/null 2>&1
 }
 
+checkpoint_state() {
+  local state="${TF_DIR}/terraform.tfstate"
+  if [ -f "$state" ]; then
+    cp "$state" "${TF_DIR}/terraform.tfstate.pre-apply-round-${1}"
+    echo "[pre-apply] Checkpoint state ronda ${1} (serial=$(jq -r '.serial' "$state"))"
+  fi
+}
+
+cd "$TF_DIR"
+sync_state
+checkpoint_state "bootstrap"
+
 for round in $(seq 1 "$MAX_ROUNDS"); do
   echo "[pre-apply] Ronda ${round}/${MAX_ROUNDS} (enable_ecs=${TF_VAR_enable_ecs})"
 
-  cd "$ROOT"
-  bash "$SCRIPTS/bootstrap-import.sh"
-  bash "$SCRIPTS/reconcile-state.sh"
-
-  cd "$TF_DIR"
+  if [ "$round" -gt 1 ]; then
+    sync_state
+    checkpoint_state "$round"
+  fi
 
   set +e
-  terraform plan -input=false -no-color -out=pre-apply.plan -detailed-exitcode \
-    -var="enable_ecs=${TF_VAR_enable_ecs}" \
-    -var="enable_app_runner=${TF_VAR_enable_app_runner}"
+  tf_plan
   ec=$?
   set -e
 
+  if [ "$ec" -eq 124 ]; then
+    echo "::error::terraform plan excedió ${PLAN_TIMEOUT}s"
+    exit 1
+  fi
+
   if [ "$ec" -eq 1 ]; then
     if [ "$round" -lt "$MAX_ROUNDS" ]; then
-      echo "[pre-apply] Plan exit 1 (¿VPC/subnet replace?) — re-sync e reintentar..."
+      echo "[pre-apply] Plan exit 1 — re-sync VPC/subnets e reintentar..."
       continue
     fi
     echo "::error::terraform plan falló tras ${MAX_ROUNDS} rondas"
@@ -87,16 +115,12 @@ for round in $(seq 1 "$MAX_ROUNDS"); do
   fi
 
   if plan_has_forbidden_deletes; then
-    echo "[pre-apply] Deletes prohibidos en plan — purgando legacy del state..."
+    echo "[pre-apply] Deletes prohibidos — purgando legacy..."
     plan_delete_addresses | while read -r addr; do
       [ -z "$addr" ] && continue
       case "$addr" in
         *apprunner*|*connector*)
-          echo "  state rm $addr"
           terraform state rm "$addr" || true
-          ;;
-        aws_subnet.private_a|aws_subnet.private_b|aws_vpc.main)
-          echo "[pre-apply] Re-import red core tras delete en plan: $addr"
           ;;
       esac
     done
@@ -104,20 +128,19 @@ for round in $(seq 1 "$MAX_ROUNDS"); do
   fi
 
   if plan_has_drift_creates || plan_modifies_redis_cluster || plan_has_subnet_replace; then
-    echo "[pre-apply] Drift detectado (create/replace red o ECS) — re-import en siguiente ronda..."
-    terraform show -no-color pre-apply.plan | grep -E 'create|aws_iam_role\.ecs|aws_lb_target_group|aws_elasticache_cluster\.redis|aws_security_group\.redis|aws_vpc\.main' || true
+    echo "[pre-apply] Drift detectado — re-import en siguiente ronda..."
     continue
   fi
 
   bash "$SCRIPTS/guard-network-plan.sh" pre-apply.plan
 
-  echo "[pre-apply] Apply (state reconciliado, sin plan congelado)..."
-  terraform apply -input=false -auto-approve \
+  echo "[pre-apply] Apply (sin plan congelado)..."
+  terraform apply -input=false -auto-approve -parallelism=10 \
     -var="enable_ecs=${TF_VAR_enable_ecs}" \
     -var="enable_app_runner=${TF_VAR_enable_app_runner}"
   exit 0
 done
 
 echo "::error::Drift no resuelto tras ${MAX_ROUNDS} rondas"
-terraform show -no-color pre-apply.plan | head -80 || true
+terraform show -no-color pre-apply.plan 2>/dev/null | head -80 || true
 exit 1

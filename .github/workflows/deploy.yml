@@ -45,7 +45,7 @@ jobs:
     name: Terraform (IaC)
     runs-on: ubuntu-latest
     needs: quality-gate
-    timeout-minutes: 30
+    timeout-minutes: 60
     outputs:
       ecr_repository_url: ${{ steps.tf_outputs.outputs.ecr_repository_url }}
       backend_service_url: ${{ steps.tf_outputs.outputs.backend_service_url }}
@@ -102,6 +102,12 @@ jobs:
           name: terraform-state
           path: infrastructure/terraform
 
+      - name: Note missing state artifact
+        if: steps.tf_state_download.outcome == 'failure'
+        run: |
+          echo "::warning::Artifact terraform-state no encontrado (primer run, expirado >90d, o job anterior cancelado)."
+          echo "::warning::bootstrap-import adoptará recursos existentes en AWS; puede tardar más en el primer sync."
+
       - name: Verify Terraform state restored
         run: |
           STATE="${{ env.TF_WORKING_DIR }}/terraform.tfstate"
@@ -136,35 +142,10 @@ jobs:
       - name: Terraform Init
         run: terraform -chdir=${{ env.TF_WORKING_DIR }} init -input=false
 
-      - name: Bootstrap import existing AWS resources
-        run: bash infrastructure/terraform/scripts/bootstrap-import.sh
-
-      - name: Reconcile Terraform state (network + legacy App Runner)
-        run: bash infrastructure/terraform/scripts/reconcile-state.sh
-
       - name: Terraform Validate
         run: terraform -chdir=${{ env.TF_WORKING_DIR }} validate
 
-      - name: Terraform Plan
-        run: |
-          set +e
-          terraform -chdir=${{ env.TF_WORKING_DIR }} plan -input=false -out=deploy.plan -detailed-exitcode
-          ec=$?
-          set -e
-          # 0 = sin cambios, 2 = cambios pendientes (éxito), 1 = error
-          if [ "$ec" -eq 1 ]; then
-            echo "::error::terraform plan falló (exit 1). Revisa taints, prevent_destroy o referencias inválidas arriba."
-            exit 1
-          fi
-          if [ "$ec" -eq 2 ]; then
-            echo "::notice::Terraform plan: hay cambios pendientes (exit 2)"
-          fi
-          if [ "$ec" -ne 0 ] && [ "$ec" -ne 2 ]; then
-            exit "$ec"
-          fi
-
-      # Re-import antes del apply: el plan congelado (deploy.plan) no refleja imports
-      # ejecutados después del plan. Aplicamos contra el state actual.
+      # bootstrap + reconcile + plan + apply viven en pre-apply.sh (evita duplicar 3× plan/bootstrap).
       - name: Terraform Apply (pre-apply atómico)
         if: github.ref == 'refs/heads/main'
         run: bash infrastructure/terraform/scripts/pre-apply.sh
@@ -223,7 +204,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: terraform-plan-${{ github.sha }}
-          path: ${{ env.TF_WORKING_DIR }}/deploy.plan
+          path: ${{ env.TF_WORKING_DIR }}/pre-apply.plan
           retention-days: 14
           if-no-files-found: ignore
 
