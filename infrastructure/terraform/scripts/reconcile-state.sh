@@ -5,14 +5,26 @@ set -uo pipefail
 TF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$TF_DIR"
 
+KNOWN_ORPHAN_SG="sg-0dbb342ef24119cb9"
+KNOWN_PRIVATE_SUBNET="subnet-0f19bd9d7914446de"
+
 echo "[reconcile-state] Estabilizando recursos de red y Redis..."
 
 state_id() {
-  terraform state show -json "$1" 2>/dev/null | jq -r '
-    if (.values | type) == "array" then .values[0].id // empty
-    else .values.id // empty
-    end
-  ' 2>/dev/null || true
+  local addr="$1"
+  local id
+
+  id="$(terraform state show -no-color "$addr" 2>/dev/null | awk '/^[[:space:]]*id[[:space:]]*=/ { print $3; exit }' | tr -d '"')"
+  if [ -n "$id" ]; then
+    echo "$id"
+    return 0
+  fi
+
+  if command -v jq >/dev/null 2>&1; then
+    terraform state show -json "$addr" 2>/dev/null | jq -r '
+      .values.id // .values.root_module.resources[0].values.id // empty
+    ' 2>/dev/null || true
+  fi
 }
 
 purge_legacy_from_state() {
@@ -30,12 +42,15 @@ purge_legacy_from_state() {
     return 0
   fi
 
-  if jq '
+  if jq --arg orphan_sg "$KNOWN_ORPHAN_SG" '
     .resources |= [
       .[]
       | select((.type | test("^aws_apprunner")) | not)
       | select(.name != "apprunner_connector")
       | select((.name | test("apprunner")) | not)
+      | select(
+          ([.instances[]?.attributes?.id?] | index($orphan_sg)) | not
+        )
       | .instances |= [
           .[]
           | select((has("deposed") and (.deposed | type) == "string")) | not)
@@ -63,6 +78,11 @@ prune_state_by_aws_id() {
     [ -z "$addr" ] && continue
     sid="$(state_id "$addr")"
     if [ "$sid" = "$target_id" ]; then
+      if [ "$target_id" = "$KNOWN_PRIVATE_SUBNET" ] && [ "$addr" = "aws_subnet.private_a" ]; then
+        echo "  conservar $addr ($target_id) — subnet privada activa"
+        terraform untaint "$addr" 2>/dev/null || true
+        continue
+      fi
       echo "  state rm $addr (aws id $target_id, sin destroy)"
       terraform state rm "$addr" || true
     fi
@@ -118,7 +138,7 @@ for addr in "${LEGACY[@]}"; do
   fi
 done
 
-prune_state_by_aws_id "sg-0dbb342ef24119cb9"
+prune_state_by_aws_id "$KNOWN_ORPHAN_SG"
 
 while IFS= read -r addr; do
   [ -z "$addr" ] && continue

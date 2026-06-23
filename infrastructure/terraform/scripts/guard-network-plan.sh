@@ -22,11 +22,25 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
+ALL_DELETES="$(
+  terraform show -json "$PLAN_FILE" | jq -r '
+    [.resource_changes[]
+      | select([.change.actions[]] | any(. == "delete" or . == "destroy"))
+      | .address
+    ] | unique | .[]
+  '
+)"
+
+if [ -n "$ALL_DELETES" ]; then
+  echo "[guard-network-plan] Recursos con delete/destroy en plan:"
+  echo "$ALL_DELETES"
+fi
+
 UNSAFE="$(
   terraform show -json "$PLAN_FILE" | jq -r '
     [.resource_changes[]
-      | select([.change.actions[]] | any(. == "delete"))
-      | select(.address | test("aws_vpc\\.main|aws_subnet\\.private_[ab]|aws_subnet\\.public_[ab]|aws_security_group\\.redis|apprunner|apprunner_connector"))
+      | select([.change.actions[]] | any(. == "delete" or . == "destroy"))
+      | select(.address | test("aws_vpc\\.main|aws_subnet\\.private_[ab]|aws_subnet\\.public_[ab]|aws_security_group\\.redis|apprunner|connector"))
       | .address
     ] | unique | .[]
   '
@@ -43,7 +57,7 @@ REPLACE_UNSAFE="$(
   terraform show -json "$PLAN_FILE" | jq -r '
     [.resource_changes[]
       | select(
-          ([.change.actions[]] | any(. == "delete"))
+          ([.change.actions[]] | any(. == "delete" or . == "destroy"))
           and ([.change.actions[]] | any(. == "create"))
         )
       | select(.address | test("aws_subnet\\.(private|public)_[ab]|aws_vpc\\.main|aws_security_group\\.redis"))
@@ -53,7 +67,7 @@ REPLACE_UNSAFE="$(
 )"
 
 if [ -n "$REPLACE_UNSAFE" ]; then
-  echo "::error::Plan intenta REEMPLAZAR VPC/subnets privadas:"
+  echo "::error::Plan intenta REEMPLAZAR VPC/subnets/SG Redis:"
   echo "$REPLACE_UNSAFE"
   exit 1
 fi
