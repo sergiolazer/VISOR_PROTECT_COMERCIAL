@@ -1,8 +1,3 @@
-locals {
-  name_prefix    = "${var.project_name}-${var.environment}"
-  enable_compute = var.enable_compute || var.enable_app_runner
-}
-
 # --- VPC para ElastiCache + ECS Fargate ---
 
 resource "aws_vpc" "main" {
@@ -41,7 +36,7 @@ resource "aws_security_group" "redis" {
   vpc_id      = aws_vpc.main.id
 
   dynamic "ingress" {
-    for_each = var.enable_compute ? [1] : []
+    for_each = local.enable_compute ? [1] : []
     content {
       description     = "Redis desde ECS Fargate"
       from_port       = 6379
@@ -64,6 +59,11 @@ resource "aws_security_group" "redis" {
 resource "aws_elasticache_subnet_group" "redis" {
   name       = "${local.name_prefix}-redis"
   subnet_ids = [aws_subnet.private_a.id, aws_subnet.private_b.id]
+
+  # ElastiCache no permite cambiar subnets con cluster activo (SubnetInUse).
+  lifecycle {
+    ignore_changes = [subnet_ids]
+  }
 }
 
 resource "aws_elasticache_cluster" "redis" {
@@ -76,6 +76,10 @@ resource "aws_elasticache_cluster" "redis" {
   port                 = 6379
   subnet_group_name    = aws_elasticache_subnet_group.redis.name
   security_group_ids   = [aws_security_group.redis.id]
+
+  lifecycle {
+    ignore_changes = [subnet_group_name]
+  }
 
   tags = {
     Name = "${local.name_prefix}-redis"
