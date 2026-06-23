@@ -250,8 +250,59 @@ import_when_needed \
   "${PREFIX}-redis" \
   "aws elasticache describe-cache-clusters --cache-cluster-id ${PREFIX}-redis"
 
+discover_vpc_from_redis() {
+  local subnet_id vpc_id cache_subnet
+
+  cache_subnet="$(aws elasticache describe-cache-clusters \
+    --cache-cluster-id "${PREFIX}-redis" \
+    --query 'CacheClusters[0].CacheSubnetGroupName' --output text 2>/dev/null || echo "")"
+
+  if [ -n "$cache_subnet" ] && [ "$cache_subnet" != "None" ]; then
+    subnet_id="$(aws elasticache describe-cache-subnet-groups \
+      --cache-subnet-group-name "$cache_subnet" \
+      --query 'CacheSubnetGroups[0].Subnets[0].SubnetIdentifier' --output text 2>/dev/null || echo "")"
+    if [ -n "$subnet_id" ] && [ "$subnet_id" != "None" ]; then
+      vpc_id="$(aws ec2 describe-subnets --subnet-ids "$subnet_id" \
+        --query 'Subnets[0].VpcId' --output text 2>/dev/null || echo "")"
+      if [ -n "$vpc_id" ] && [ "$vpc_id" != "None" ]; then
+        echo "$vpc_id"
+        return 0
+      fi
+    fi
+  fi
+
+  echo ""
+}
+
+discover_redis_security_group() {
+  aws elasticache describe-cache-clusters \
+    --cache-cluster-id "${PREFIX}-redis" \
+    --query 'CacheClusters[0].SecurityGroups[0].SecurityGroupId' \
+    --output text 2>/dev/null || echo ""
+}
+
 discover_vpc_id() {
   local subnet_id vpc_id
+
+  vpc_id="$(discover_vpc_from_redis)"
+  if [ -n "$vpc_id" ] && [ "$vpc_id" != "None" ]; then
+    echo "[bootstrap-import] VPC ancla ElastiCache Redis: $vpc_id" >&2
+    echo "$vpc_id"
+    return 0
+  fi
+
+  subnet_id="$(aws ec2 describe-subnets \
+    --filters "Name=tag:Name,Values=${PREFIX}-private-a" \
+    --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")"
+
+  if [ -n "$subnet_id" ] && [ "$subnet_id" != "None" ]; then
+    vpc_id="$(aws ec2 describe-subnets --subnet-ids "$subnet_id" \
+      --query 'Subnets[0].VpcId' --output text 2>/dev/null || echo "")"
+    if [ -n "$vpc_id" ] && [ "$vpc_id" != "None" ]; then
+      echo "$vpc_id"
+      return 0
+    fi
+  fi
 
   subnet_id="$(aws ec2 describe-subnets \
     --filters "Name=cidr-block,Values=10.20.1.0/24" \
@@ -279,6 +330,79 @@ discover_vpc_id() {
   echo "$vpc_id"
 }
 
+import_compute_ecs() {
+  local tg_arn listener_arn task_def_arn alb_arn
+
+  echo "[bootstrap-import] ECS Fargate + ALB..."
+
+  reconcile_resource_id \
+    'aws_iam_role.ecs_execution[0]' \
+    "${PREFIX}-ecs-execution" \
+    "aws iam get-role --role-name ${PREFIX}-ecs-execution"
+
+  reconcile_resource_id \
+    'aws_iam_role.ecs_task[0]' \
+    "${PREFIX}-ecs-task" \
+    "aws iam get-role --role-name ${PREFIX}-ecs-task"
+
+  reconcile_resource_id \
+    'aws_iam_role_policy_attachment.ecs_execution[0]' \
+    "${PREFIX}-ecs-execution/arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+
+  reconcile_resource_id \
+    'aws_iam_role_policy.ecs_execution_secrets[0]' \
+    "${PREFIX}-ecs-execution:${PREFIX}-ecs-execution-secrets"
+
+  reconcile_resource_id \
+    'aws_iam_role_policy.ecs_task[0]' \
+    "${PREFIX}-ecs-task:${PREFIX}-ecs-task"
+
+  import_when_needed \
+    'aws_ecs_cluster.backend[0]' \
+    "${PREFIX}-backend" \
+    "aws ecs describe-clusters --clusters ${PREFIX}-backend --query 'clusters[?status==\`ACTIVE\`].clusterName' --output text"
+
+  import_when_needed \
+    'aws_cloudwatch_log_group.ecs[0]' \
+    "/ecs/${PREFIX}-backend" \
+    "aws logs describe-log-groups --log-group-name-prefix /ecs/${PREFIX}-backend"
+
+  alb_arn="$(aws elbv2 describe-load-balancers \
+    --query "LoadBalancers[?LoadBalancerName=='${PREFIX}-backend'].LoadBalancerArn | [0]" \
+    --output text 2>/dev/null || echo "")"
+  reconcile_resource_id 'aws_lb.backend[0]' "$alb_arn"
+
+  tg_arn="$(aws elbv2 describe-target-groups \
+    --names "${PREFIX}-backend" \
+    --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || echo "")"
+  if [ -z "$tg_arn" ] || [ "$tg_arn" = "None" ]; then
+    tg_arn="$(aws elbv2 describe-target-groups \
+      --query "TargetGroups[?TargetGroupName=='${PREFIX}-backend'].TargetGroupArn | [0]" \
+      --output text 2>/dev/null || echo "")"
+  fi
+  reconcile_resource_id 'aws_lb_target_group.backend[0]' "$tg_arn"
+
+  if [ -n "$alb_arn" ] && [ "$alb_arn" != "None" ]; then
+    listener_arn="$(aws elbv2 describe-listeners \
+      --load-balancer-arn "$alb_arn" \
+      --query 'Listeners[?Port==`80`].ListenerArn | [0]' --output text 2>/dev/null || echo "")"
+    reconcile_resource_id 'aws_lb_listener.http[0]' "$listener_arn"
+  fi
+
+  task_def_arn="$(aws ecs describe-services \
+    --cluster "${PREFIX}-backend" \
+    --services "${PREFIX}-backend" \
+    --query 'services[0].taskDefinition' --output text 2>/dev/null || echo "")"
+  if [ -n "$task_def_arn" ] && [ "$task_def_arn" != "None" ]; then
+    reconcile_resource_id 'aws_ecs_task_definition.backend[0]' "$task_def_arn"
+  fi
+
+  reconcile_resource_id \
+    'aws_ecs_service.backend[0]' \
+    "${PREFIX}-backend/${PREFIX}-backend" \
+    "aws ecs describe-services --cluster ${PREFIX}-backend --services ${PREFIX}-backend --query 'services[?status==\`ACTIVE\`].serviceName' --output text"
+}
+
 # --- VPC / networking (VPC = la que contiene las subnets reales por CIDR) ---
 VPC_ID="$(discover_vpc_id)"
 
@@ -303,7 +427,10 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   SG_ALB="$(discover_sg_in_vpc "${PREFIX}-alb")"
   reconcile_resource_id 'aws_security_group.alb[0]' "$SG_ALB"
 
-  SG_REDIS="$(discover_sg_in_vpc "${PREFIX}-redis")"
+  SG_REDIS="$(discover_redis_security_group)"
+  if [ -z "$SG_REDIS" ] || [ "$SG_REDIS" = "None" ]; then
+    SG_REDIS="$(discover_sg_in_vpc "${PREFIX}-redis")"
+  fi
   reconcile_resource_id 'aws_security_group.redis' "$SG_REDIS"
 
   if [ "${TF_VAR_enable_ecs:-false}" = "true" ] || [ "${TF_VAR_enable_app_runner:-false}" = "true" ]; then
@@ -313,22 +440,7 @@ fi
 
 # --- ECS Fargate (solo si enable_ecs o enable_app_runner legacy) ---
 if [ "${TF_VAR_enable_ecs:-false}" = "true" ] || [ "${TF_VAR_enable_app_runner:-false}" = "true" ]; then
-  import_when_needed \
-    'aws_ecs_cluster.backend[0]' \
-    "${PREFIX}-backend" \
-    "aws ecs describe-clusters --clusters ${PREFIX}-backend --query 'clusters[?status==\`ACTIVE\`].clusterName' --output text"
-
-  import_when_needed \
-    'aws_cloudwatch_log_group.ecs[0]' \
-    "/ecs/${PREFIX}-backend" \
-    "aws logs describe-log-groups --log-group-name-prefix /ecs/${PREFIX}-backend"
-
-  ALB_ARN="$(aws elbv2 describe-load-balancers \
-    --query "LoadBalancers[?LoadBalancerName=='${PREFIX}-backend'].LoadBalancerArn | [0]" \
-    --output text 2>/dev/null || echo "")"
-  if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
-    import_when_needed 'aws_lb.backend[0]' "$ALB_ARN"
-  fi
+  import_compute_ecs
 fi
 
 echo "[bootstrap-import] Completado (import warnings: ${IMPORT_ERRORS})"
