@@ -14,6 +14,15 @@ STABLE=(
   aws_security_group.redis
   aws_elasticache_subnet_group.redis
   aws_elasticache_cluster.redis
+  'aws_subnet.public_a[0]'
+  'aws_subnet.public_b[0]'
+  'aws_internet_gateway.main[0]'
+  'aws_nat_gateway.main[0]'
+  'aws_security_group.alb[0]'
+  'aws_security_group.ecs_tasks[0]'
+  'aws_lb.backend[0]'
+  'aws_ecs_cluster.backend[0]'
+  'aws_ecs_service.backend[0]'
 )
 
 for addr in "${STABLE[@]}"; do

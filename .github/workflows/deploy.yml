@@ -139,6 +139,9 @@ jobs:
       - name: Bootstrap import existing AWS resources
         run: bash infrastructure/terraform/scripts/bootstrap-import.sh
 
+      - name: Reconcile Terraform state (network + legacy App Runner)
+        run: bash infrastructure/terraform/scripts/reconcile-state.sh
+
       - name: Terraform Validate
         run: terraform -chdir=${{ env.TF_WORKING_DIR }} validate
 
@@ -150,7 +153,11 @@ jobs:
           set -e
           # 0 = sin cambios, 2 = cambios pendientes (éxito), 1 = error
           if [ "$ec" -eq 1 ]; then
+            echo "::error::terraform plan falló (exit 1). Revisa taints, prevent_destroy o referencias inválidas arriba."
             exit 1
+          fi
+          if [ "$ec" -eq 2 ]; then
+            echo "::notice::Terraform plan: hay cambios pendientes (exit 2)"
           fi
           if [ "$ec" -ne 0 ] && [ "$ec" -ne 2 ]; then
             exit "$ec"
