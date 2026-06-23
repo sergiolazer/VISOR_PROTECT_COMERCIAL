@@ -183,7 +183,7 @@ jobs:
           if [ "$ec" -eq 1 ]; then
             exit 1
           fi
-          bash infrastructure/terraform/scripts/guard-network-plan.sh ${{ env.TF_WORKING_DIR }}/pre-apply.plan
+          bash infrastructure/terraform/scripts/guard-network-plan.sh pre-apply.plan
 
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
