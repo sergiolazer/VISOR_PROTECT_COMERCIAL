@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Quita taints, limpia deposed, retira legacy App Runner del state sin destroy en AWS.
+# Quita taints, purga legacy App Runner y deposed del state sin destroy en AWS.
 set -uo pipefail
 
 TF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -8,38 +8,49 @@ cd "$TF_DIR"
 echo "[reconcile-state] Estabilizando recursos de red y Redis..."
 
 state_id() {
-  terraform state show -no-color "$1" 2>/dev/null | awk '/^[[:space:]]*id[[:space:]]*=/ { print $3; exit }' | tr -d '"'
+  terraform state show -json "$1" 2>/dev/null | jq -r '
+    if (.values | type) == "array" then .values[0].id // empty
+    else .values.id // empty
+    end
+  ' 2>/dev/null || true
 }
 
-strip_deposed_objects() {
+purge_legacy_from_state() {
   if ! command -v jq >/dev/null 2>&1; then
-    echo "[reconcile-state] jq no disponible — omitiendo limpieza de deposed"
+    echo "[reconcile-state] jq no disponible — omitiendo purga JSON del state"
     return 0
   fi
 
-  local tmp pulled
-  tmp="$(mktemp)"
+  local pulled tmp
   pulled="$(mktemp)"
+  tmp="$(mktemp)"
 
   if ! terraform state pull >"$pulled" 2>/dev/null; then
-    rm -f "$tmp" "$pulled"
+    rm -f "$pulled" "$tmp"
     return 0
   fi
 
-  if jq -e '
-    .resources |= map(
-      .instances |= (
-        [.[] | select(has("deposed") | not) | del(.deposed_key)]
-      )
-    )
+  if jq '
+    .resources |= [
+      .[]
+      | select((.type | test("^aws_apprunner")) | not)
+      | select(.name != "apprunner_connector")
+      | select((.name | test("apprunner")) | not)
+      | .instances |= [
+          .[]
+          | select((has("deposed") and (.deposed | type) == "string")) | not)
+          | del(.deposed_key)
+        ]
+    ]
+    | .resources |= map(select(.instances | length > 0))
   ' "$pulled" >"$tmp"; then
     if ! cmp -s "$pulled" "$tmp"; then
-      echo "[reconcile-state] Eliminando instancias deposed del state"
+      echo "[reconcile-state] Purga legacy App Runner / deposed (state push)"
       terraform state push -force "$tmp"
     fi
   fi
 
-  rm -f "$tmp" "$pulled"
+  rm -f "$pulled" "$tmp"
 }
 
 prune_state_by_aws_id() {
@@ -77,7 +88,7 @@ STABLE=(
   'aws_ecs_service.backend[0]'
 )
 
-strip_deposed_objects
+purge_legacy_from_state
 
 for addr in "${STABLE[@]}"; do
   if terraform state show -no-color "$addr" >/dev/null 2>&1; then
@@ -92,9 +103,12 @@ LEGACY=(
   'aws_apprunner_service.backend[0]'
   'aws_apprunner_auto_scaling_configuration_version.backend[0]'
   'aws_cloudwatch_log_group.apprunner[0]'
+  'aws_cloudwatch_metric_alarm.apprunner_5xx[0]'
+  'aws_cloudwatch_metric_alarm.apprunner_latency[0]'
   aws_iam_role.apprunner_ecr_access
   aws_iam_role.apprunner_instance
   'aws_iam_role_policy.apprunner_instance'
+  'aws_iam_role_policy_attachment.apprunner_ecr_access'
 )
 
 for addr in "${LEGACY[@]}"; do
@@ -104,7 +118,6 @@ for addr in "${LEGACY[@]}"; do
   fi
 done
 
-# SG/subnet huérfanos conocidos de applies fallidos (App Runner / replace)
 prune_state_by_aws_id "sg-0dbb342ef24119cb9"
 
 while IFS= read -r addr; do
@@ -112,5 +125,8 @@ while IFS= read -r addr; do
   echo "  state rm $addr (legacy por nombre)"
   terraform state rm "$addr" || true
 done < <(terraform state list 2>/dev/null | grep -iE 'apprunner|connector' || true)
+
+echo "[reconcile-state] State actual:"
+terraform state list 2>/dev/null | sort || true
 
 echo "[reconcile-state] Completado"

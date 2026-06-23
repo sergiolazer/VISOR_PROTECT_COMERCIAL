@@ -175,21 +175,48 @@ import_when_needed \
   "${PREFIX}-redis" \
   "aws elasticache describe-cache-clusters --cache-cluster-id ${PREFIX}-redis"
 
-# --- VPC / networking (IDs por tag o CIDR; re-import si el state difiere) ---
-VPC_ID="$(aws ec2 describe-vpcs \
-  --filters "Name=tag:Name,Values=${PREFIX}-vpc" \
-  --query 'Vpcs[0].VpcId' --output text 2>/dev/null || echo "")"
+discover_vpc_id() {
+  local subnet_id vpc_id
 
-if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
-  VPC_ID="$(aws ec2 describe-vpcs \
-    --filters "Name=cidr-block,Values=10.20.0.0/16" \
+  subnet_id="$(aws ec2 describe-subnets \
+    --filters "Name=cidr-block,Values=10.20.1.0/24" \
+    --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")"
+
+  if [ -n "$subnet_id" ] && [ "$subnet_id" != "None" ]; then
+    vpc_id="$(aws ec2 describe-subnets --subnet-ids "$subnet_id" \
+      --query 'Subnets[0].VpcId' --output text 2>/dev/null || echo "")"
+    if [ -n "$vpc_id" ] && [ "$vpc_id" != "None" ]; then
+      echo "$vpc_id"
+      return 0
+    fi
+  fi
+
+  vpc_id="$(aws ec2 describe-vpcs \
+    --filters "Name=tag:Name,Values=${PREFIX}-vpc" \
     --query 'Vpcs[0].VpcId' --output text 2>/dev/null || echo "")"
-fi
+
+  if [ -z "$vpc_id" ] || [ "$vpc_id" = "None" ]; then
+    vpc_id="$(aws ec2 describe-vpcs \
+      --filters "Name=cidr-block,Values=10.20.0.0/16" \
+      --query 'Vpcs[0].VpcId' --output text 2>/dev/null || echo "")"
+  fi
+
+  echo "$vpc_id"
+}
+
+# --- VPC / networking (VPC = la que contiene las subnets reales por CIDR) ---
+VPC_ID="$(discover_vpc_id)"
 
 if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   reconcile_resource_id 'aws_vpc.main' "$VPC_ID"
 
   SUBNET_A="$(discover_subnet_in_vpc "10.20.1.0/24" "${PREFIX}-private-a")"
+  if [ -z "$SUBNET_A" ] || [ "$SUBNET_A" = "None" ]; then
+    if aws ec2 describe-subnets --subnet-ids subnet-0f19bd9d7914446de >/dev/null 2>&1; then
+      SUBNET_A="subnet-0f19bd9d7914446de"
+      echo "[bootstrap-import] Subnet A por ID conocido: $SUBNET_A"
+    fi
+  fi
   reconcile_resource_id 'aws_subnet.private_a' "$SUBNET_A"
 
   SUBNET_B="$(discover_subnet_in_vpc "10.20.2.0/24" "${PREFIX}-private-b")"
