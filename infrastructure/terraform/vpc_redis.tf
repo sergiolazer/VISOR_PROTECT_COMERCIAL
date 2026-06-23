@@ -8,6 +8,10 @@ resource "aws_vpc" "main" {
   tags = {
     Name = "${local.name_prefix}-vpc"
   }
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "aws_subnet" "private_a" {
@@ -17,6 +21,11 @@ resource "aws_subnet" "private_a" {
 
   tags = {
     Name = "${local.name_prefix}-private-a"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [availability_zone]
   }
 }
 
@@ -28,23 +37,17 @@ resource "aws_subnet" "private_b" {
   tags = {
     Name = "${local.name_prefix}-private-b"
   }
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [availability_zone]
+  }
 }
 
 resource "aws_security_group" "redis" {
   name        = "${local.name_prefix}-redis"
-  description = "Redis ElastiCache - traffic from ECS tasks only"
+  description = "Redis ElastiCache"
   vpc_id      = aws_vpc.main.id
-
-  dynamic "ingress" {
-    for_each = local.enable_compute ? [1] : []
-    content {
-      description     = "Redis desde ECS Fargate"
-      from_port       = 6379
-      to_port         = 6379
-      protocol        = "tcp"
-      security_groups = [aws_security_group.ecs_tasks[0].id]
-    }
-  }
 
   egress {
     from_port   = 0
@@ -52,6 +55,22 @@ resource "aws_security_group" "redis" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group_rule" "redis_from_ecs" {
+  count = local.enable_compute ? 1 : 0
+
+  type                     = "ingress"
+  description              = "Redis desde ECS Fargate"
+  from_port                = 6379
+  to_port                  = 6379
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.redis.id
+  source_security_group_id = aws_security_group.ecs_tasks[0].id
 }
 
 # --- ElastiCache Redis ---
@@ -60,7 +79,6 @@ resource "aws_elasticache_subnet_group" "redis" {
   name       = "${local.name_prefix}-redis"
   subnet_ids = [aws_subnet.private_a.id, aws_subnet.private_b.id]
 
-  # ElastiCache no permite cambiar subnets con cluster activo (SubnetInUse).
   lifecycle {
     ignore_changes = [subnet_ids]
   }

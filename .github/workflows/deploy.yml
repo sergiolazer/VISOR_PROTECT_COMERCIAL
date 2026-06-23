@@ -162,6 +162,10 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: bash infrastructure/terraform/scripts/bootstrap-import.sh
 
+      - name: Reconcile Terraform state (network + legacy App Runner)
+        if: github.ref == 'refs/heads/main'
+        run: bash infrastructure/terraform/scripts/reconcile-state.sh
+
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
         run: terraform -chdir=${{ env.TF_WORKING_DIR }} apply -input=false -auto-approve
