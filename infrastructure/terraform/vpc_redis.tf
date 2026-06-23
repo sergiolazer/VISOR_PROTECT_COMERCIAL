@@ -97,7 +97,13 @@ resource "aws_elasticache_cluster" "redis" {
   security_group_ids   = [aws_security_group.redis.id]
 
   lifecycle {
-    ignore_changes = [subnet_group_name, security_group_ids]
+    ignore_changes = [
+      subnet_group_name,
+      security_group_ids,
+      engine_version,
+      parameter_group_name,
+      port,
+    ]
   }
 
   tags = {

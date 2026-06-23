@@ -23,6 +23,29 @@ in_state() {
   terraform state show -no-color "$1" >/dev/null 2>&1
 }
 
+# Recursos con count=0 si enable_ecs=false — import requiere las mismas vars que el apply.
+terraform_import() {
+  terraform import -input=false \
+    -var="enable_ecs=${TF_VAR_enable_ecs:-false}" \
+    -var="enable_app_runner=${TF_VAR_enable_app_runner:-false}" \
+    -var="github_org=${TF_VAR_github_org:-bootstrap-import}" \
+    -var="cors_origin=${TF_VAR_cors_origin:-http://localhost:5173}" \
+    -var="aws_region=${AWS_REGION}" \
+    "$@"
+}
+
+assert_in_state_if_exists() {
+  local addr="$1"
+  local probe="$2"
+
+  if bash -c "$probe" >/dev/null 2>&1; then
+    if ! in_state "$addr"; then
+      echo "::error::El recurso existe en AWS pero no quedó en state tras import: $addr"
+      exit 1
+    fi
+  fi
+}
+
 # import_when_needed <terraform_address> <import_id> [aws_probe_command]
 import_when_needed() {
   local addr="$1"
@@ -42,7 +65,7 @@ import_when_needed() {
   fi
 
   echo "[bootstrap-import] Importando $addr <- $id"
-  if terraform import -input=false "$addr" "$id"; then
+  if terraform_import "$addr" "$id"; then
     if in_state "$addr"; then
       echo "[bootstrap-import] OK: $addr"
       return 0
@@ -86,7 +109,7 @@ reconcile_resource_id() {
   fi
 
   echo "[bootstrap-import] Importando $addr <- $aws_id"
-  if terraform import -input=false "$addr" "$aws_id"; then
+  if terraform_import "$addr" "$aws_id"; then
     echo "[bootstrap-import] OK: $addr"
     return 0
   fi
@@ -245,11 +268,6 @@ import_when_needed \
   "${PREFIX}-redis" \
   "aws elasticache describe-cache-subnet-groups --cache-subnet-group-name ${PREFIX}-redis"
 
-import_when_needed \
-  'aws_elasticache_cluster.redis' \
-  "${PREFIX}-redis" \
-  "aws elasticache describe-cache-clusters --cache-cluster-id ${PREFIX}-redis"
-
 discover_vpc_from_redis() {
   local subnet_id vpc_id cache_subnet
 
@@ -401,6 +419,16 @@ import_compute_ecs() {
     'aws_ecs_service.backend[0]' \
     "${PREFIX}-backend/${PREFIX}-backend" \
     "aws ecs describe-services --cluster ${PREFIX}-backend --services ${PREFIX}-backend --query 'services[?status==\`ACTIVE\`].serviceName' --output text"
+
+  assert_in_state_if_exists \
+    'aws_iam_role.ecs_execution[0]' \
+    "aws iam get-role --role-name ${PREFIX}-ecs-execution"
+  assert_in_state_if_exists \
+    'aws_iam_role.ecs_task[0]' \
+    "aws iam get-role --role-name ${PREFIX}-ecs-task"
+  assert_in_state_if_exists \
+    'aws_lb_target_group.backend[0]' \
+    "aws elbv2 describe-target-groups --names ${PREFIX}-backend"
 }
 
 # --- VPC / networking (VPC = la que contiene las subnets reales por CIDR) ---
@@ -432,6 +460,11 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
     SG_REDIS="$(discover_sg_in_vpc "${PREFIX}-redis")"
   fi
   reconcile_resource_id 'aws_security_group.redis' "$SG_REDIS"
+
+  import_when_needed \
+    'aws_elasticache_cluster.redis' \
+    "${PREFIX}-redis" \
+    "aws elasticache describe-cache-clusters --cache-cluster-id ${PREFIX}-redis"
 
   if [ "${TF_VAR_enable_ecs:-false}" = "true" ] || [ "${TF_VAR_enable_app_runner:-false}" = "true" ]; then
     import_compute_network
