@@ -17,7 +17,7 @@ env:
   TF_WORKING_DIR: infrastructure/terraform
 
 # Secrets:  AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-# Variables: GITHUB_ORG, CORS_ORIGIN, ENABLE_APP_RUNNER, GITHUB_REPO, ECR_IMAGE_TAG
+# Variables: GITHUB_ORG, CORS_ORIGIN, ENABLE_ECS (o ENABLE_APP_RUNNER legacy), GITHUB_REPO, ECR_IMAGE_TAG
 
 jobs:
   quality-gate:
@@ -48,12 +48,15 @@ jobs:
     timeout-minutes: 30
     outputs:
       ecr_repository_url: ${{ steps.tf_outputs.outputs.ecr_repository_url }}
-      app_runner_service_arn: ${{ steps.tf_outputs.outputs.app_runner_service_arn }}
+      backend_service_url: ${{ steps.tf_outputs.outputs.backend_service_url }}
+      ecs_cluster_name: ${{ steps.tf_outputs.outputs.ecs_cluster_name }}
+      ecs_service_name: ${{ steps.tf_outputs.outputs.ecs_service_name }}
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'sa-east-1' }}
       TF_VAR_github_repo: ${{ vars.GITHUB_REPO || github.event.repository.name }}
+      TF_VAR_enable_ecs: ${{ vars.ENABLE_ECS || vars.ENABLE_APP_RUNNER || 'false' }}
       TF_VAR_enable_app_runner: ${{ vars.ENABLE_APP_RUNNER || 'false' }}
       TF_VAR_ecr_image_tag: ${{ vars.ECR_IMAGE_TAG || 'latest' }}
       TF_VAR_aws_region: ${{ vars.AWS_REGION || 'sa-east-1' }}
@@ -66,7 +69,7 @@ jobs:
         run: |
           ORG="${{ vars.GITHUB_ORG }}"
           CORS="${{ vars.CORS_ORIGIN }}"
-          ENABLE_AR="${{ vars.ENABLE_APP_RUNNER || 'false' }}"
+          ENABLE_ECS="${{ vars.ENABLE_ECS || vars.ENABLE_APP_RUNNER || 'false' }}"
           AWS_REG="${{ vars.AWS_REGION || 'sa-east-1' }}"
 
           if [ -z "$ORG" ]; then
@@ -77,18 +80,11 @@ jobs:
           if [ -z "$CORS" ]; then
             CORS="http://localhost:5173"
             echo "::warning::CORS_ORIGIN no configurado — usando placeholder temporal: $CORS"
-            echo "::warning::Define CORS_ORIGIN (URL del frontend) antes de tráfico real o ENABLE_APP_RUNNER=true"
+            echo "::warning::Define CORS_ORIGIN (URL del frontend) antes de tráfico real o ENABLE_ECS=true"
           fi
 
-          if [ "$ENABLE_AR" = "true" ] && [ "$AWS_REG" = "sa-east-1" ]; then
-            echo "::error::App Runner no está disponible en sa-east-1."
-            echo "::error::Configura la variable GitHub AWS_REGION=us-east-1 antes de ENABLE_APP_RUNNER=true."
-            echo "::error::Ver docs/PHASE_2.md — la fase 2 migra el stack a us-east-1."
-            exit 1
-          fi
-
-          if [ "$ENABLE_AR" = "true" ] && [ "$CORS" = "http://localhost:5173" ] && [ -z "${{ vars.CORS_ORIGIN }}" ]; then
-            echo "::error::CORS_ORIGIN es obligatorio cuando ENABLE_APP_RUNNER=true"
+          if [ "$ENABLE_ECS" = "true" ] && [ "$CORS" = "http://localhost:5173" ] && [ -z "${{ vars.CORS_ORIGIN }}" ]; then
+            echo "::error::CORS_ORIGIN es obligatorio cuando ENABLE_ECS=true"
             echo "::error::Configura GitHub Variable CORS_ORIGIN con la URL del frontend (ej. https://app.tudominio.com.br)"
             exit 1
           fi
@@ -96,7 +92,7 @@ jobs:
           echo "TF_VAR_github_org=$ORG" >> "$GITHUB_ENV"
           echo "TF_VAR_cors_origin=$CORS" >> "$GITHUB_ENV"
           echo "TF_VAR_aws_region=$AWS_REG" >> "$GITHUB_ENV"
-          echo "Terraform region=$AWS_REG github_org=$ORG cors_origin=$CORS enable_app_runner=$ENABLE_AR"
+          echo "Terraform region=$AWS_REG github_org=$ORG cors_origin=$CORS enable_ecs=$ENABLE_ECS"
 
       - name: Download Terraform state
         id: tf_state_download
@@ -201,11 +197,23 @@ jobs:
           ECR_URL=$(terraform -chdir=${{ env.TF_WORKING_DIR }} output -raw ecr_repository_url)
           echo "ecr_repository_url=$ECR_URL" >> "$GITHUB_OUTPUT"
 
-          APP_ARN=$(terraform -chdir=${{ env.TF_WORKING_DIR }} output -raw app_runner_service_arn 2>/dev/null || true)
-          if [ "$APP_ARN" = "null" ] || [ -z "$APP_ARN" ]; then
-            APP_ARN=""
+          BACKEND_URL=$(terraform -chdir=${{ env.TF_WORKING_DIR }} output -raw backend_service_url 2>/dev/null || true)
+          if [ "$BACKEND_URL" = "null" ] || [ -z "$BACKEND_URL" ]; then
+            BACKEND_URL=""
           fi
-          echo "app_runner_service_arn=$APP_ARN" >> "$GITHUB_OUTPUT"
+          echo "backend_service_url=$BACKEND_URL" >> "$GITHUB_OUTPUT"
+
+          ECS_CLUSTER=$(terraform -chdir=${{ env.TF_WORKING_DIR }} output -raw ecs_cluster_name 2>/dev/null || true)
+          if [ "$ECS_CLUSTER" = "null" ] || [ -z "$ECS_CLUSTER" ]; then
+            ECS_CLUSTER=""
+          fi
+          echo "ecs_cluster_name=$ECS_CLUSTER" >> "$GITHUB_OUTPUT"
+
+          ECS_SERVICE=$(terraform -chdir=${{ env.TF_WORKING_DIR }} output -raw ecs_service_name 2>/dev/null || true)
+          if [ "$ECS_SERVICE" = "null" ] || [ -z "$ECS_SERVICE" ]; then
+            ECS_SERVICE=""
+          fi
+          echo "ecs_service_name=$ECS_SERVICE" >> "$GITHUB_OUTPUT"
 
       - name: Upload plan artifact
         if: always()
@@ -217,7 +225,7 @@ jobs:
           if-no-files-found: ignore
 
   deploy-app:
-    name: Build → ECR → App Runner
+    name: Build → ECR → ECS
     runs-on: ubuntu-latest
     needs: terraform
     if: github.ref == 'refs/heads/main' && needs.terraform.result == 'success'
@@ -227,7 +235,8 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'sa-east-1' }}
       ECR_REPOSITORY_URL: ${{ needs.terraform.outputs.ecr_repository_url }}
-      APP_RUNNER_SERVICE_ARN: ${{ needs.terraform.outputs.app_runner_service_arn }}
+      ECS_CLUSTER_NAME: ${{ needs.terraform.outputs.ecs_cluster_name }}
+      ECS_SERVICE_NAME: ${{ needs.terraform.outputs.ecs_service_name }}
 
     steps:
       - name: Checkout
@@ -259,14 +268,18 @@ jobs:
           docker push "$ECR_REPOSITORY_URL:latest"
           echo "Imagen publicada: $ECR_REPOSITORY_URL:$IMAGE_TAG"
 
-      - name: Trigger App Runner deployment (rolling update)
-        if: env.APP_RUNNER_SERVICE_ARN != ''
+      - name: Trigger ECS rolling deployment
+        if: env.ECS_CLUSTER_NAME != '' && env.ECS_SERVICE_NAME != ''
         run: |
-          aws apprunner start-deployment --service-arn "$APP_RUNNER_SERVICE_ARN"
-          echo "App Runner deployment iniciado: $APP_RUNNER_SERVICE_ARN"
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER_NAME" \
+            --service "$ECS_SERVICE_NAME" \
+            --force-new-deployment \
+            --no-cli-pager
+          echo "ECS deployment iniciado: $ECS_CLUSTER_NAME / $ECS_SERVICE_NAME"
 
-      - name: App Runner skip notice
-        if: env.APP_RUNNER_SERVICE_ARN == ''
+      - name: ECS skip notice
+        if: env.ECS_CLUSTER_NAME == '' || env.ECS_SERVICE_NAME == ''
         run: |
-          echo "::notice::App Runner no desplegado (ENABLE_APP_RUNNER=false o primer bootstrap)."
-          echo "Tras la primera imagen en ECR, configura ENABLE_APP_RUNNER=true y vuelve a ejecutar el workflow."
+          echo "::notice::ECS no desplegado (ENABLE_ECS=false o primer bootstrap)."
+          echo "Tras la primera imagen en ECR, configura ENABLE_ECS=true y vuelve a ejecutar el workflow."

@@ -64,12 +64,13 @@ jobs:
           docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           docker push "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
 
-      - name: Trigger App Runner deployment
+      - name: Trigger ECS deployment
         env:
-          SERVICE_ARN: ${{ vars.APP_RUNNER_SERVICE_ARN }}
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER_NAME }}
+          ECS_SERVICE: ${{ vars.ECS_SERVICE_NAME }}
         run: |
-          if [ -z "$SERVICE_ARN" ]; then
-            echo "::warning::Variable APP_RUNNER_SERVICE_ARN no configurada — solo se subió la imagen a ECR"
+          if [ -z "$ECS_CLUSTER" ] || [ -z "$ECS_SERVICE" ]; then
+            echo "::warning::Variables ECS_CLUSTER_NAME / ECS_SERVICE_NAME no configuradas — solo se subió la imagen a ECR"
             exit 0
           fi
-          aws apprunner start-deployment --service-arn "$SERVICE_ARN"
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" --force-new-deployment --no-cli-pager

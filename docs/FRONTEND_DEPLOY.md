@@ -10,7 +10,7 @@ Se inyectan en **tiempo de build** (no en runtime). Tras cambiarlas, hay que **r
 
 | Variable | Descripción | Ejemplo producción |
 |----------|-------------|-------------------|
-| `VITE_API_URL` | URL del backend (REST) | `https://xxxxx.us-east-1.awsapprunner.com` |
+| `VITE_API_URL` | URL del backend (REST) | `http://xxxxx.us-east-1.elb.amazonaws.com` |
 | `VITE_SOCKET_URL` | URL del backend (WebSockets) | Igual que `VITE_API_URL` |
 | `VITE_SHOP_ID` | UUID del comercio (demo/bootstrap) | UUID real del shop |
 | `VITE_SHOP_NAME` | Nombre mostrado | `Mi Comercio` |
@@ -32,8 +32,8 @@ flowchart LR
 
 1. **Primer deploy** del frontend (API puede ser temporal o vacía).
 2. Copiar URL pública → GitHub Variable **`CORS_ORIGIN`** (ej. `https://visor-protect.vercel.app`).
-3. Activar fase 2 (`AWS_REGION=us-east-1`, `ENABLE_APP_RUNNER=true`).
-4. Copiar **`app_runner_service_url`** → `VITE_API_URL` y `VITE_SOCKET_URL` en Vercel/Netlify.
+3. Activar fase 2 (`AWS_REGION=sa-east-1`, `ENABLE_ECS=true`).
+4. Copiar **`backend_service_url`** (ALB) → `VITE_API_URL` y `VITE_SOCKET_URL` en Vercel/Netlify.
 5. **Redeploy** del frontend.
 
 ---

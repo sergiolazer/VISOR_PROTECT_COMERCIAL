@@ -2,21 +2,18 @@ aws_region   = "sa-east-1"
 project_name = "visor-protect"
 environment  = "production"
 
-# Tu org/usuario de GitHub
 github_org  = "tu-org"
 github_repo = "VISOR_PROTECT_COMERCIAL"
 
-# URL del frontend desplegado (CloudFront, S3+CloudFront, o App Runner frontend)
 cors_origin = "https://app.tudominio.com.br"
 
-# Costo optimizado — escalar en eventos masivos
-app_runner_cpu       = "0.25 vCPU"
-app_runner_memory    = "0.5 GB"
-app_runner_min_size  = 1
-app_runner_max_size  = 10
-redis_node_type      = "cache.t4g.micro"
+# ECS Fargate — costo optimizado
+ecs_cpu           = "256"
+ecs_memory        = "512"
+ecs_desired_count = 1
+redis_node_type   = "cache.t4g.micro"
 
 alert_latency_threshold_ms = 200
 
-# Primer apply: false. Tras docker push a ECR → true y terraform apply de nuevo.
-enable_app_runner = false
+# Primer apply: false. Tras docker push a ECR → true (ECS Fargate + ALB).
+enable_ecs = false

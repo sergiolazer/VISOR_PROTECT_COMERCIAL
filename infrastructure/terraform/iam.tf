@@ -1,78 +1,4 @@
-# IAM — App Runner (ECR pull + Secrets Manager + S3)
-
-resource "aws_iam_role" "apprunner_ecr_access" {
-  name = "${local.name_prefix}-apprunner-ecr"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = {
-        Service = "build.apprunner.amazonaws.com"
-      }
-      Action = "sts:AssumeRole"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "apprunner_ecr_access" {
-  role       = aws_iam_role.apprunner_ecr_access.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess"
-}
-
-resource "aws_iam_role" "apprunner_instance" {
-  name = "${local.name_prefix}-apprunner-instance"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = {
-        Service = "tasks.apprunner.amazonaws.com"
-      }
-      Action = "sts:AssumeRole"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy" "apprunner_instance" {
-  name = "${local.name_prefix}-apprunner-instance"
-  role = aws_iam_role.apprunner_instance.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "secretsmanager:GetSecretValue"
-        ]
-        Resource = [
-          aws_secretsmanager_secret.mongo_uri.arn,
-          aws_secretsmanager_secret.jwt_secret.arn,
-          aws_secretsmanager_secret.cloudinary.arn
-        ]
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "s3:PutObject",
-          "s3:GetObject",
-          "s3:DeleteObject"
-        ]
-        Resource = "${aws_s3_bucket.media.arn}/*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["s3:ListBucket"]
-        Resource = aws_s3_bucket.media.arn
-      }
-    ]
-  })
-}
-
-# IAM — GitHub Actions OIDC (CI/CD sin credenciales estáticas)
-# Thumbprints SHA-1 oficiales (40 hex) — cadena cruzada GitHub (AWS Security Blog)
+# IAM — ECS + GitHub Actions OIDC
 
 resource "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
@@ -132,11 +58,12 @@ resource "aws_iam_role_policy" "github_deploy" {
       {
         Effect = "Allow"
         Action = [
-          "apprunner:StartDeployment",
-          "apprunner:DescribeService",
-          "apprunner:ListOperations"
+          "ecs:UpdateService",
+          "ecs:DescribeServices",
+          "ecs:DescribeTasks",
+          "ecs:ListTasks"
         ]
-        Resource = var.enable_app_runner ? aws_apprunner_service.backend[0].arn : "*"
+        Resource = "*"
       }
     ]
   })

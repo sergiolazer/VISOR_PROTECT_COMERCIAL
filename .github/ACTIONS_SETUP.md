@@ -2,56 +2,47 @@
 
 Configura en **Settings → Secrets and variables → Actions** antes del primer push a `main`.
 
-Guía detallada fase 2: [docs/PHASE_2.md](../docs/PHASE_2.md)  
+Guía fase 2 (ECS Fargate): [docs/PHASE_2.md](../docs/PHASE_2.md)  
 Frontend (CORS_ORIGIN): [docs/FRONTEND_DEPLOY.md](../docs/FRONTEND_DEPLOY.md)
 
 ## Secrets (Repository secrets)
 
 | Nombre | Valor |
 |--------|--------|
-| `AWS_ACCESS_KEY_ID` | IAM user con permisos Terraform + ECR + App Runner |
+| `AWS_ACCESS_KEY_ID` | IAM user con permisos Terraform + ECR + ECS |
 | `AWS_SECRET_ACCESS_KEY` | Secret correspondiente |
 
-## Variables — Fase 1 (completada)
+## Variables — Fase 1
 
 | Nombre | Valor | Notas |
 |--------|-------|-------|
 | `GITHUB_ORG` | *(opcional)* | Default: `github.repository_owner` |
 | `CORS_ORIGIN` | *(opcional)* | Default bootstrap: `http://localhost:5173` |
-| `ENABLE_APP_RUNNER` | `false` | Mantener hasta fase 2 |
-| `AWS_REGION` | `sa-east-1` | ECR, Redis, VPC |
+| `ENABLE_ECS` | `false` | Mantener hasta fase 2 |
+| `AWS_REGION` | `sa-east-1` | ECR, Redis, VPC, ECS |
 | `GITHUB_REPO` | *(opcional)* | Default: nombre del repositorio |
 | `ECR_IMAGE_TAG` | `latest` | *(opcional)* |
 
-## Variables — Fase 2 (App Runner)
+## Variables — Fase 2 (ECS Fargate + ALB)
 
 | Nombre | Valor | Obligatorio |
 |--------|-------|-------------|
-| `AWS_REGION` | `us-east-1` | Sí — App Runner no existe en `sa-east-1` |
-| `ENABLE_APP_RUNNER` | `true` | Sí |
-| `CORS_ORIGIN` | `https://tu-frontend.com.br` | Sí |
-| `APP_RUNNER_SERVICE_ARN` | ARN del servicio | Tras 2º apply (solo redeploy manual) |
+| `ENABLE_ECS` | `true` | Sí |
+| `CORS_ORIGIN` | URL del frontend (Vercel) | Sí |
+| `AWS_REGION` | `sa-east-1` | Recomendado (ECS disponible) |
+| `ECS_CLUSTER_NAME` | Tras apply (redeploy manual) | Opcional |
+| `ECS_SERVICE_NAME` | Tras apply (redeploy manual) | Opcional |
 
-> **Migración regional:** al pasar de `sa-east-1` a `us-east-1`, Terraform recrea el stack en Virginia. Copia los secretos de Secrets Manager antes del apply. Ver [PHASE_2.md](../docs/PHASE_2.md).
+`ENABLE_APP_RUNNER=true` sigue activando ECS (alias legacy).
 
 ## Terraform state (artifact)
 
-El workflow persiste `terraform.tfstate` como artifact `terraform-state` (90 días) tras cada deploy en `main`.
-
-| Run | Log esperado |
-|-----|----------------|
-| Primero | `Sin artifact terraform-state` (normal) |
-| Siguientes | `State restaurado desde artifact (serial=…)` |
-| Tras apply | `State persistido (serial=…, resource_instances=…)` |
-
-Verificar en GitHub → Actions → run → **Artifacts** → `terraform-state`.
-
-Para producción a largo plazo, habilitar backend S3 en `infrastructure/terraform/versions.tf`.
+El workflow persiste `terraform.tfstate` como artifact `terraform-state` (90 días).
 
 ## Flujo
 
-1. **Fase 1** (`ENABLE_APP_RUNNER=false`, `AWS_REGION=sa-east-1`): ECR, Redis, S3, IAM; imagen en ECR.
-2. Rellenar secretos en **AWS Secrets Manager** (`visor-protect-production/*`).
-3. **Fase 2** (`ENABLE_APP_RUNNER=true`, `AWS_REGION=us-east-1`, `CORS_ORIGIN` real): App Runner + deploy automático.
+1. **Fase 1** (`ENABLE_ECS=false`): ECR, Redis, S3, IAM; imagen en ECR.
+2. Secretos en **Secrets Manager** + frontend en Vercel → `CORS_ORIGIN`.
+3. **Fase 2** (`ENABLE_ECS=true`): ECS Fargate + ALB + deploy automático.
 
-Workflow: `.github/workflows/deploy.yml` (push a `main` o `workflow_dispatch`).
+Workflow: `.github/workflows/deploy.yml`.

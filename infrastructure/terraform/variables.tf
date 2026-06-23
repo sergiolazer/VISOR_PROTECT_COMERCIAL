@@ -1,16 +1,7 @@
 variable "aws_region" {
-  description = "Region AWS. ECR/Redis en sa-east-1. App Runner NO existe en sa-east-1: usar us-east-1 con ENABLE_APP_RUNNER=true."
+  description = "Region AWS (ECR, VPC, Redis, ECS). sa-east-1 recomendado para latencia BR."
   type        = string
   default     = "sa-east-1"
-
-  validation {
-    condition = !var.enable_app_runner || contains([
-      "us-east-1", "us-east-2", "us-west-2",
-      "ap-south-1", "ap-southeast-1", "ap-southeast-2", "ap-northeast-1",
-      "eu-central-1", "eu-west-1", "eu-west-2", "eu-west-3",
-    ], var.aws_region)
-    error_message = "App Runner no esta disponible en sa-east-1. Configure AWS_REGION=us-east-1 (y recursos en esa region) antes de ENABLE_APP_RUNNER=true."
-  }
 }
 
 variable "project_name" {
@@ -41,28 +32,22 @@ variable "cors_origin" {
   type        = string
 }
 
-variable "app_runner_cpu" {
-  description = "vCPU App Runner (0.25 = costo mínimo)"
+variable "ecs_cpu" {
+  description = "CPU Fargate en unidades (256 = 0.25 vCPU)"
   type        = string
-  default     = "0.25 vCPU"
+  default     = "256"
 }
 
-variable "app_runner_memory" {
-  description = "Memoria App Runner"
+variable "ecs_memory" {
+  description = "Memoria Fargate en MiB (512 = 0.5 GB)"
   type        = string
-  default     = "0.5 GB"
+  default     = "512"
 }
 
-variable "app_runner_min_size" {
-  description = "Instancias mínimas (1 = siempre caliente, latencia baja)"
+variable "ecs_desired_count" {
+  description = "Tareas Fargate deseadas (1 = siempre caliente)"
   type        = number
   default     = 1
-}
-
-variable "app_runner_max_size" {
-  description = "Instancias máximas (auto-scaling en picos)"
-  type        = number
-  default     = 10
 }
 
 variable "redis_node_type" {
@@ -89,8 +74,15 @@ variable "ecr_image_tag" {
   default     = "latest"
 }
 
+variable "enable_ecs" {
+  description = "false en bootstrap (ECR vacío); true tras primera imagen — despliega ECS Fargate + ALB"
+  type        = bool
+  default     = false
+}
+
+# Deprecated — mapeado a enable_ecs en CI (ENABLE_APP_RUNNER en GitHub)
 variable "enable_app_runner" {
-  description = "false en el primer apply (ECR vacío); true tras push de imagen :latest"
+  description = "DEPRECATED: usar enable_ecs. Mantenido por compatibilidad CI."
   type        = bool
   default     = false
 }

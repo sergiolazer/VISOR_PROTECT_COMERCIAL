@@ -3,14 +3,30 @@ output "ecr_repository_url" {
   value       = aws_ecr_repository.backend.repository_url
 }
 
+output "backend_service_url" {
+  description = "URL publica del backend (ALB — API + WebSockets)"
+  value       = local.enable_compute ? "http://${aws_lb.backend[0].dns_name}" : null
+}
+
+output "ecs_cluster_name" {
+  description = "Nombre del cluster ECS"
+  value       = local.enable_compute ? aws_ecs_cluster.backend[0].name : null
+}
+
+output "ecs_service_name" {
+  description = "Nombre del servicio ECS"
+  value       = local.enable_compute ? aws_ecs_service.backend[0].name : null
+}
+
+# Deprecated — compatibilidad con workflows antiguos
 output "app_runner_service_url" {
-  description = "URL pública del backend (API + WebSockets)"
-  value       = var.enable_app_runner ? "https://${aws_apprunner_service.backend[0].service_url}" : null
+  description = "DEPRECATED: usar backend_service_url"
+  value       = local.enable_compute ? "http://${aws_lb.backend[0].dns_name}" : null
 }
 
 output "app_runner_service_arn" {
-  description = "ARN del servicio App Runner (secret GitHub APP_RUNNER_SERVICE_ARN)"
-  value       = var.enable_app_runner ? aws_apprunner_service.backend[0].arn : null
+  description = "DEPRECATED: usar ecs_cluster_name + ecs_service_name"
+  value       = null
 }
 
 output "github_deploy_role_arn" {
@@ -24,7 +40,7 @@ output "redis_endpoint" {
 }
 
 output "s3_media_bucket" {
-  description = "Bucket S3 para media con lifecycle 7 días"
+  description = "Bucket S3 para media con lifecycle 7 dias"
   value       = aws_s3_bucket.media.bucket
 }
 

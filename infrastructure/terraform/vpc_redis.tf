@@ -1,8 +1,9 @@
 locals {
-  name_prefix = "${var.project_name}-${var.environment}"
+  name_prefix    = "${var.project_name}-${var.environment}"
+  enable_compute = var.enable_compute || var.enable_app_runner
 }
 
-# --- VPC mínima para ElastiCache (App Runner se conecta vía VPC Connector) ---
+# --- VPC para ElastiCache + ECS Fargate ---
 
 resource "aws_vpc" "main" {
   cidr_block           = "10.20.0.0/16"
@@ -36,15 +37,18 @@ resource "aws_subnet" "private_b" {
 
 resource "aws_security_group" "redis" {
   name        = "${local.name_prefix}-redis"
-  description = "Redis ElastiCache - traffic from App Runner VPC connector only"
+  description = "Redis ElastiCache - traffic from ECS tasks only"
   vpc_id      = aws_vpc.main.id
 
-  ingress {
-    description     = "Redis desde App Runner"
-    from_port       = 6379
-    to_port         = 6379
-    protocol        = "tcp"
-    security_groups = [aws_security_group.apprunner_connector.id]
+  dynamic "ingress" {
+    for_each = var.enable_compute ? [1] : []
+    content {
+      description     = "Redis desde ECS Fargate"
+      from_port       = 6379
+      to_port         = 6379
+      protocol        = "tcp"
+      security_groups = [aws_security_group.ecs_tasks[0].id]
+    }
   }
 
   egress {
@@ -53,27 +57,6 @@ resource "aws_security_group" "redis" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-}
-
-resource "aws_security_group" "apprunner_connector" {
-  name        = "${local.name_prefix}-apprunner-connector"
-  description = "VPC connector App Runner"
-  vpc_id      = aws_vpc.main.id
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-resource "aws_apprunner_vpc_connector" "main" {
-  count = var.enable_app_runner ? 1 : 0
-
-  vpc_connector_name = "${local.name_prefix}-connector"
-  subnets            = [aws_subnet.private_a.id, aws_subnet.private_b.id]
-  security_groups    = [aws_security_group.apprunner_connector.id]
 }
 
 # --- ElastiCache Redis ---

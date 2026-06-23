@@ -89,16 +89,6 @@ import_when_needed \
   "aws iam get-open-id-connect-provider --open-id-connect-provider-arn ${OIDC_ARN}"
 
 import_when_needed \
-  'aws_iam_role.apprunner_ecr_access' \
-  "${PREFIX}-apprunner-ecr" \
-  "aws iam get-role --role-name ${PREFIX}-apprunner-ecr"
-
-import_when_needed \
-  'aws_iam_role.apprunner_instance' \
-  "${PREFIX}-apprunner-instance" \
-  "aws iam get-role --role-name ${PREFIX}-apprunner-instance"
-
-import_when_needed \
   'aws_iam_role.github_deploy' \
   "${PREFIX}-github-deploy" \
   "aws iam get-role --role-name ${PREFIX}-github-deploy"
@@ -148,10 +138,17 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   fi
 
   SG_CONN="$(aws ec2 describe-security-groups \
-    --filters "Name=group-name,Values=${PREFIX}-apprunner-connector" \
+    --filters "Name=group-name,Values=${PREFIX}-ecs" \
     --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")"
   if [ -n "$SG_CONN" ] && [ "$SG_CONN" != "None" ]; then
-    import_when_needed 'aws_security_group.apprunner_connector' "$SG_CONN"
+    import_when_needed 'aws_security_group.ecs_tasks[0]' "$SG_CONN"
+  fi
+
+  SG_ALB="$(aws ec2 describe-security-groups \
+    --filters "Name=group-name,Values=${PREFIX}-alb" \
+    --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")"
+  if [ -n "$SG_ALB" ] && [ "$SG_ALB" != "None" ]; then
+    import_when_needed 'aws_security_group.alb[0]' "$SG_ALB"
   fi
 
   SG_REDIS="$(aws ec2 describe-security-groups \
@@ -162,32 +159,23 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   fi
 fi
 
-# --- App Runner (solo si ENABLE_APP_RUNNER=true y el servicio existe) ---
-if [ "${TF_VAR_enable_app_runner:-false}" = "true" ]; then
+# --- ECS Fargate (solo si enable_ecs o enable_app_runner legacy) ---
+if [ "${TF_VAR_enable_ecs:-false}" = "true" ] || [ "${TF_VAR_enable_app_runner:-false}" = "true" ]; then
   import_when_needed \
-    'aws_cloudwatch_log_group.apprunner[0]' \
-    "/aws/apprunner/${PREFIX}-backend" \
-    "aws logs describe-log-groups --log-group-name-prefix /aws/apprunner/${PREFIX}-backend"
+    'aws_ecs_cluster.backend[0]' \
+    "${PREFIX}-backend" \
+    "aws ecs describe-clusters --clusters ${PREFIX}-backend --query 'clusters[?status==\`ACTIVE\`].clusterName' --output text"
 
-  AS_ARN="$(aws apprunner list-auto-scaling-configurations \
-    --query "AutoScalingConfigurationSummaryList[?AutoScalingConfigurationName=='${PREFIX}-backend-as'].AutoScalingConfigurationArn | [0]" \
-    --output text 2>/dev/null || echo "")"
-  if [ -n "$AS_ARN" ] && [ "$AS_ARN" != "None" ]; then
-    import_when_needed 'aws_apprunner_auto_scaling_configuration_version.backend[0]' "$AS_ARN"
-  fi
+  import_when_needed \
+    'aws_cloudwatch_log_group.ecs[0]' \
+    "/ecs/${PREFIX}-backend" \
+    "aws logs describe-log-groups --log-group-name-prefix /ecs/${PREFIX}-backend"
 
-  VC_ARN="$(aws apprunner list-vpc-connectors \
-    --query "VpcConnectors[?VpcConnectorName=='${PREFIX}-connector'].VpcConnectorArn | [0]" \
+  ALB_ARN="$(aws elbv2 describe-load-balancers \
+    --query "LoadBalancers[?LoadBalancerName=='${PREFIX}-backend'].LoadBalancerArn | [0]" \
     --output text 2>/dev/null || echo "")"
-  if [ -n "$VC_ARN" ] && [ "$VC_ARN" != "None" ]; then
-    import_when_needed 'aws_apprunner_vpc_connector.main[0]' "$VC_ARN"
-  fi
-
-  SVC_ARN="$(aws apprunner list-services \
-    --query "ServiceSummaryList[?ServiceName=='${PREFIX}-backend'].ServiceArn | [0]" \
-    --output text 2>/dev/null || echo "")"
-  if [ -n "$SVC_ARN" ] && [ "$SVC_ARN" != "None" ]; then
-    import_when_needed 'aws_apprunner_service.backend[0]' "$SVC_ARN"
+  if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
+    import_when_needed 'aws_lb.backend[0]' "$ALB_ARN"
   fi
 fi
 
