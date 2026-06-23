@@ -114,6 +114,81 @@ discover_subnet_in_vpc() {
   echo "$subnet_id"
 }
 
+discover_sg_in_vpc() {
+  local group_name="$1"
+  local sg_id
+
+  sg_id="$(aws ec2 describe-security-groups \
+    --filters "Name=vpc-id,Values=${VPC_ID}" "Name=group-name,Values=${group_name}" \
+    --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")"
+
+  if [ -z "$sg_id" ] || [ "$sg_id" = "None" ]; then
+    sg_id="$(aws ec2 describe-security-groups \
+      --filters "Name=group-name,Values=${group_name}" \
+      --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")"
+  fi
+
+  echo "$sg_id"
+}
+
+import_compute_network() {
+  local pub_a pub_b igw eip nat rt_pub rt_priv
+
+  echo "[bootstrap-import] Red pública ECS (VPC=${VPC_ID})..."
+
+  pub_a="$(discover_subnet_in_vpc "10.20.10.0/24" "${PREFIX}-public-a")"
+  reconcile_resource_id 'aws_subnet.public_a[0]' "$pub_a"
+
+  pub_b="$(discover_subnet_in_vpc "10.20.11.0/24" "${PREFIX}-public-b")"
+  reconcile_resource_id 'aws_subnet.public_b[0]' "$pub_b"
+
+  igw="$(aws ec2 describe-internet-gateways \
+    --filters "Name=attachment.vpc-id,Values=${VPC_ID}" \
+    --query 'InternetGateways[0].InternetGatewayId' --output text 2>/dev/null || echo "")"
+  reconcile_resource_id 'aws_internet_gateway.main[0]' "$igw"
+
+  eip="$(aws ec2 describe-addresses \
+    --filters "Name=tag:Name,Values=${PREFIX}-nat-eip" \
+    --query 'Addresses[0].AllocationId' --output text 2>/dev/null || echo "")"
+  reconcile_resource_id 'aws_eip.nat[0]' "$eip"
+
+  nat="$(aws ec2 describe-nat-gateways \
+    --filter "Name=tag:Name,Values=${PREFIX}-nat" "Name=state,Values=available" \
+    --query 'NatGateways[0].NatGatewayId' --output text 2>/dev/null || echo "")"
+  if [ -z "$nat" ] || [ "$nat" = "None" ]; then
+    nat="$(aws ec2 describe-nat-gateways \
+      --filter "Name=vpc-id,Values=${VPC_ID}" "Name=state,Values=available" \
+      --query 'NatGateways[0].NatGatewayId' --output text 2>/dev/null || echo "")"
+  fi
+  reconcile_resource_id 'aws_nat_gateway.main[0]' "$nat"
+
+  rt_pub="$(aws ec2 describe-route-tables \
+    --filters "Name=vpc-id,Values=${VPC_ID}" "Name=tag:Name,Values=${PREFIX}-public-rt" \
+    --query 'RouteTables[0].RouteTableId' --output text 2>/dev/null || echo "")"
+  reconcile_resource_id 'aws_route_table.public[0]' "$rt_pub"
+
+  rt_priv="$(aws ec2 describe-route-tables \
+    --filters "Name=vpc-id,Values=${VPC_ID}" "Name=tag:Name,Values=${PREFIX}-private-rt" \
+    --query 'RouteTables[0].RouteTableId' --output text 2>/dev/null || echo "")"
+  reconcile_resource_id 'aws_route_table.private[0]' "$rt_priv"
+
+  if [ -n "$pub_a" ] && [ "$pub_a" != "None" ] && [ -n "$rt_pub" ] && [ "$rt_pub" != "None" ]; then
+    reconcile_resource_id 'aws_route_table_association.public_a[0]' "${pub_a}/${rt_pub}"
+  fi
+
+  if [ -n "$pub_b" ] && [ "$pub_b" != "None" ] && [ -n "$rt_pub" ] && [ "$rt_pub" != "None" ]; then
+    reconcile_resource_id 'aws_route_table_association.public_b[0]' "${pub_b}/${rt_pub}"
+  fi
+
+  if [ -n "$SUBNET_A" ] && [ "$SUBNET_A" != "None" ] && [ -n "$rt_priv" ] && [ "$rt_priv" != "None" ]; then
+    reconcile_resource_id 'aws_route_table_association.private_a[0]' "${SUBNET_A}/${rt_priv}"
+  fi
+
+  if [ -n "$SUBNET_B" ] && [ "$SUBNET_B" != "None" ] && [ -n "$rt_priv" ] && [ "$rt_priv" != "None" ]; then
+    reconcile_resource_id 'aws_route_table_association.private_b[0]' "${SUBNET_B}/${rt_priv}"
+  fi
+}
+
 echo "[bootstrap-import] Sincronizando state (prefix=${PREFIX}, account=${ACCOUNT_ID})"
 
 if [ -z "${TF_VAR_github_org:-}" ] || [ -z "${TF_VAR_cors_origin:-}" ]; then
@@ -222,24 +297,18 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   SUBNET_B="$(discover_subnet_in_vpc "10.20.2.0/24" "${PREFIX}-private-b")"
   reconcile_resource_id 'aws_subnet.private_b' "$SUBNET_B"
 
-  SG_CONN="$(aws ec2 describe-security-groups \
-    --filters "Name=group-name,Values=${PREFIX}-ecs" \
-    --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")"
-  if [ -n "$SG_CONN" ] && [ "$SG_CONN" != "None" ]; then
-    import_when_needed 'aws_security_group.ecs_tasks[0]' "$SG_CONN"
-  fi
+  SG_CONN="$(discover_sg_in_vpc "${PREFIX}-ecs")"
+  reconcile_resource_id 'aws_security_group.ecs_tasks[0]' "$SG_CONN"
 
-  SG_ALB="$(aws ec2 describe-security-groups \
-    --filters "Name=group-name,Values=${PREFIX}-alb" \
-    --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")"
-  if [ -n "$SG_ALB" ] && [ "$SG_ALB" != "None" ]; then
-    import_when_needed 'aws_security_group.alb[0]' "$SG_ALB"
-  fi
+  SG_ALB="$(discover_sg_in_vpc "${PREFIX}-alb")"
+  reconcile_resource_id 'aws_security_group.alb[0]' "$SG_ALB"
 
-  SG_REDIS="$(aws ec2 describe-security-groups \
-    --filters "Name=group-name,Values=${PREFIX}-redis" \
-    --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")"
+  SG_REDIS="$(discover_sg_in_vpc "${PREFIX}-redis")"
   reconcile_resource_id 'aws_security_group.redis' "$SG_REDIS"
+
+  if [ "${TF_VAR_enable_ecs:-false}" = "true" ] || [ "${TF_VAR_enable_app_runner:-false}" = "true" ]; then
+    import_compute_network
+  fi
 fi
 
 # --- ECS Fargate (solo si enable_ecs o enable_app_runner legacy) ---

@@ -26,7 +26,7 @@ UNSAFE="$(
   terraform show -json "$PLAN_FILE" | jq -r '
     [.resource_changes[]
       | select([.change.actions[]] | any(. == "delete"))
-      | select(.address | test("aws_vpc\\.main|aws_subnet\\.private_[ab]|apprunner|apprunner_connector"))
+      | select(.address | test("aws_vpc\\.main|aws_subnet\\.private_[ab]|aws_subnet\\.public_[ab]|aws_security_group\\.redis|apprunner|apprunner_connector"))
       | .address
     ] | unique | .[]
   '
@@ -46,7 +46,7 @@ REPLACE_UNSAFE="$(
           ([.change.actions[]] | any(. == "delete"))
           and ([.change.actions[]] | any(. == "create"))
         )
-      | select(.address | test("aws_subnet\\.private_[ab]|aws_vpc\\.main"))
+      | select(.address | test("aws_subnet\\.(private|public)_[ab]|aws_vpc\\.main|aws_security_group\\.redis"))
       | .address
     ] | unique | .[]
   '

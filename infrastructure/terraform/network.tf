@@ -21,6 +21,11 @@ resource "aws_subnet" "public_a" {
   tags = {
     Name = "${local.name_prefix}-public-a"
   }
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [availability_zone, tags, tags_all, map_public_ip_on_launch]
+  }
 }
 
 resource "aws_subnet" "public_b" {
@@ -33,6 +38,11 @@ resource "aws_subnet" "public_b" {
 
   tags = {
     Name = "${local.name_prefix}-public-b"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [availability_zone, tags, tags_all, map_public_ip_on_launch]
   }
 }
 
