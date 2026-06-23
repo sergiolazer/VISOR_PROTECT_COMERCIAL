@@ -56,6 +56,64 @@ import_when_needed() {
   return 0
 }
 
+state_resource_id() {
+  terraform state show -no-color "$1" 2>/dev/null | awk '/^[[:space:]]*id[[:space:]]*=/ { print $3; exit }' | tr -d '"'
+}
+
+# Alinea state con el ID real en AWS (re-import si el state apunta a otro recurso).
+reconcile_resource_id() {
+  local addr="$1"
+  local aws_id="$2"
+  local probe="${3:-}"
+
+  [ -z "$aws_id" ] || [ "$aws_id" = "None" ] && return 0
+
+  if [ -n "$probe" ]; then
+    if ! bash -c "$probe" >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  if in_state "$addr"; then
+    local state_id
+    state_id="$(state_resource_id "$addr")"
+    if [ "$state_id" = "$aws_id" ]; then
+      echo "[bootstrap-import] OK (id coincide): $addr=$aws_id"
+      return 0
+    fi
+    echo "[bootstrap-import] Reconciliando $addr: state=${state_id:-?} -> aws=$aws_id"
+    terraform state rm "$addr" 2>/dev/null || true
+  fi
+
+  echo "[bootstrap-import] Importando $addr <- $aws_id"
+  if terraform import -input=false "$addr" "$aws_id"; then
+    echo "[bootstrap-import] OK: $addr"
+    return 0
+  fi
+
+  echo "::warning::No se pudo importar $addr (id=$aws_id)"
+  IMPORT_ERRORS=$((IMPORT_ERRORS + 1))
+  return 0
+}
+
+discover_subnet_in_vpc() {
+  local cidr="$1"
+  local name_tag="$2"
+  local subnet_id
+
+  subnet_id="$(aws ec2 describe-subnets \
+    --filters "Name=vpc-id,Values=${VPC_ID}" "Name=cidr-block,Values=${cidr}" \
+    --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")"
+
+  if [ -z "$subnet_id" ] || [ "$subnet_id" = "None" ]; then
+    subnet_id="$(aws ec2 describe-subnets \
+      --filters "Name=tag:Name,Values=${name_tag}" \
+      --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")"
+  fi
+
+  echo "$subnet_id"
+}
+
 echo "[bootstrap-import] Sincronizando state (prefix=${PREFIX}, account=${ACCOUNT_ID})"
 
 if [ -z "${TF_VAR_github_org:-}" ] || [ -z "${TF_VAR_cors_origin:-}" ]; then
@@ -117,27 +175,25 @@ import_when_needed \
   "${PREFIX}-redis" \
   "aws elasticache describe-cache-clusters --cache-cluster-id ${PREFIX}-redis"
 
-# --- VPC / networking (IDs descubiertos por tags) ---
+# --- VPC / networking (IDs por tag o CIDR; re-import si el state difiere) ---
 VPC_ID="$(aws ec2 describe-vpcs \
   --filters "Name=tag:Name,Values=${PREFIX}-vpc" \
   --query 'Vpcs[0].VpcId' --output text 2>/dev/null || echo "")"
 
+if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
+  VPC_ID="$(aws ec2 describe-vpcs \
+    --filters "Name=cidr-block,Values=10.20.0.0/16" \
+    --query 'Vpcs[0].VpcId' --output text 2>/dev/null || echo "")"
+fi
+
 if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
-  import_when_needed 'aws_vpc.main' "$VPC_ID"
+  reconcile_resource_id 'aws_vpc.main' "$VPC_ID"
 
-  SUBNET_A="$(aws ec2 describe-subnets \
-    --filters "Name=tag:Name,Values=${PREFIX}-private-a" \
-    --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")"
-  if [ -n "$SUBNET_A" ] && [ "$SUBNET_A" != "None" ]; then
-    import_when_needed 'aws_subnet.private_a' "$SUBNET_A"
-  fi
+  SUBNET_A="$(discover_subnet_in_vpc "10.20.1.0/24" "${PREFIX}-private-a")"
+  reconcile_resource_id 'aws_subnet.private_a' "$SUBNET_A"
 
-  SUBNET_B="$(aws ec2 describe-subnets \
-    --filters "Name=tag:Name,Values=${PREFIX}-private-b" \
-    --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")"
-  if [ -n "$SUBNET_B" ] && [ "$SUBNET_B" != "None" ]; then
-    import_when_needed 'aws_subnet.private_b' "$SUBNET_B"
-  fi
+  SUBNET_B="$(discover_subnet_in_vpc "10.20.2.0/24" "${PREFIX}-private-b")"
+  reconcile_resource_id 'aws_subnet.private_b' "$SUBNET_B"
 
   SG_CONN="$(aws ec2 describe-security-groups \
     --filters "Name=group-name,Values=${PREFIX}-ecs" \
@@ -156,9 +212,7 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   SG_REDIS="$(aws ec2 describe-security-groups \
     --filters "Name=group-name,Values=${PREFIX}-redis" \
     --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")"
-  if [ -n "$SG_REDIS" ] && [ "$SG_REDIS" != "None" ]; then
-    import_when_needed 'aws_security_group.redis' "$SG_REDIS"
-  fi
+  reconcile_resource_id 'aws_security_group.redis' "$SG_REDIS"
 fi
 
 # --- ECS Fargate (solo si enable_ecs o enable_app_runner legacy) ---

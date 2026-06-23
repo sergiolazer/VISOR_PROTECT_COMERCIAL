@@ -173,9 +173,21 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: bash infrastructure/terraform/scripts/reconcile-state.sh
 
+      - name: Verify network plan before apply
+        if: github.ref == 'refs/heads/main'
+        run: |
+          set +e
+          terraform -chdir=${{ env.TF_WORKING_DIR }} plan -input=false -no-color -out=pre-apply.plan -detailed-exitcode
+          ec=$?
+          set -e
+          if [ "$ec" -eq 1 ]; then
+            exit 1
+          fi
+          bash infrastructure/terraform/scripts/guard-network-plan.sh ${{ env.TF_WORKING_DIR }}/pre-apply.plan
+
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
-        run: terraform -chdir=${{ env.TF_WORKING_DIR }} apply -input=false -auto-approve
+        run: terraform -chdir=${{ env.TF_WORKING_DIR }} apply -input=false -auto-approve pre-apply.plan
 
       - name: Persist Terraform state
         if: always() && github.ref == 'refs/heads/main'
