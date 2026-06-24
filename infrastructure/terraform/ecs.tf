@@ -60,14 +60,6 @@ resource "aws_security_group" "ecs_tasks" {
   description = "ECS Fargate tasks"
   vpc_id      = aws_vpc.main.id
 
-  ingress {
-    description     = "Backend from ALB"
-    from_port       = 3001
-    to_port         = 3001
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb[0].id]
-  }
-
   egress {
     from_port   = 0
     to_port     = 0
@@ -76,8 +68,20 @@ resource "aws_security_group" "ecs_tasks" {
   }
 
   lifecycle {
-    ignore_changes = [name, description, ingress, egress, vpc_id]
+    ignore_changes = [name, description, egress, vpc_id]
   }
+}
+
+resource "aws_security_group_rule" "ecs_tasks_from_alb" {
+  count = local.enable_compute ? 1 : 0
+
+  type                     = "ingress"
+  description              = "Backend from ALB"
+  from_port                = 3001
+  to_port                  = 3001
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.ecs_tasks[0].id
+  source_security_group_id = aws_security_group.alb[0].id
 }
 
 resource "aws_lb" "backend" {

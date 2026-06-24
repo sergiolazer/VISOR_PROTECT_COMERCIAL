@@ -185,20 +185,71 @@ discover_sg_in_vpc() {
     --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo ""
 }
 
+sg_vpc_id() {
+  local sg_id="$1"
+
+  [ -z "$sg_id" ] || [ "$sg_id" = "None" ] && return 0
+
+  aws ec2 describe-security-groups --group-ids "$sg_id" \
+    --query 'SecurityGroups[0].VpcId' --output text 2>/dev/null || echo ""
+}
+
+# SG del ALB solo si pertenece a la VPC ancla; si no, busca por nombre en la VPC correcta.
 discover_alb_sg() {
-  local alb_arn
+  local alb_arn sg vpc
 
   alb_arn="$(aws elbv2 describe-load-balancers \
     --query "LoadBalancers[?LoadBalancerName=='${PREFIX}-backend'].LoadBalancerArn | [0]" \
     --output text 2>/dev/null || echo "")"
 
   if ! aws_value_ok "$alb_arn"; then
-    echo ""
+    discover_sg_in_vpc "${PREFIX}-alb"
     return 0
   fi
 
-  aws elbv2 describe-load-balancers --load-balancer-arns "$alb_arn" \
-    --query 'LoadBalancers[0].SecurityGroups[0]' --output text 2>/dev/null || echo ""
+  sg="$(aws elbv2 describe-load-balancers --load-balancer-arns "$alb_arn" \
+    --query 'LoadBalancers[0].SecurityGroups[0]' --output text 2>/dev/null || echo "")"
+
+  if ! aws_value_ok "$sg"; then
+    discover_sg_in_vpc "${PREFIX}-alb"
+    return 0
+  fi
+
+  vpc="$(sg_vpc_id "$sg")"
+  if [ -n "$vpc" ] && [ "$vpc" != "None" ] && [ "$vpc" = "$VPC_ID" ]; then
+    echo "$sg"
+    return 0
+  fi
+
+  echo "[bootstrap-import] ALB SG $sg en VPC ${vpc:-?} != ancla $VPC_ID — usando ${PREFIX}-alb en VPC ancla" >&2
+  discover_sg_in_vpc "${PREFIX}-alb"
+}
+
+# Alinea SG al nombre dentro de la VPC ancla (state rm si apunta a otra VPC).
+reconcile_sg_for_vpc() {
+  local addr="$1"
+  local group_name="$2"
+  local target_sg state_sg state_vpc
+
+  target_sg="$(discover_sg_in_vpc "$group_name")"
+
+  if in_state "$addr"; then
+    state_sg="$(state_resource_id "$addr")"
+    state_vpc="$(sg_vpc_id "$state_sg")"
+    if [ -n "$state_sg" ] && [ -n "$state_vpc" ] && [ "$state_vpc" != "None" ] && [ "$state_vpc" != "$VPC_ID" ]; then
+      echo "[bootstrap-import] $addr en VPC $state_vpc != ancla $VPC_ID — state rm sin destroy"
+      terraform state rm "$addr" 2>/dev/null || true
+    elif aws_value_ok "$target_sg" && [ "$state_sg" != "$target_sg" ]; then
+      echo "[bootstrap-import] $addr id state ($state_sg) != SG ancla ($target_sg)"
+      terraform state rm "$addr" 2>/dev/null || true
+    fi
+  fi
+
+  if aws_value_ok "$target_sg"; then
+    reconcile_resource_id "$addr" "$target_sg"
+  else
+    echo "[bootstrap-import] Sin SG $group_name en VPC ancla — create pendiente para $addr"
+  fi
 }
 
 import_compute_network() {
@@ -432,20 +483,15 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   reconcile_subnet_for_vpc 'aws_subnet.private_b' "10.20.2.0/24"
   SUBNET_B="$(discover_subnet_in_vpc "10.20.2.0/24")"
 
-  SG_CONN="$(discover_sg_in_vpc "${PREFIX}-ecs")"
-  reconcile_resource_id 'aws_security_group.ecs_tasks[0]' "$SG_CONN"
+  reconcile_sg_for_vpc 'aws_security_group.ecs_tasks[0]' "${PREFIX}-ecs"
 
-  SG_ALB="$(discover_alb_sg)"
-  if ! aws_value_ok "$SG_ALB"; then
-    SG_ALB="$(discover_sg_in_vpc "${PREFIX}-alb")"
-  fi
-  reconcile_resource_id 'aws_security_group.alb[0]' "$SG_ALB"
+  reconcile_sg_for_vpc 'aws_security_group.alb[0]' "${PREFIX}-alb"
 
   SG_REDIS="$(discover_redis_security_group)"
   if [ -z "$SG_REDIS" ] || [ "$SG_REDIS" = "None" ]; then
     SG_REDIS="$(discover_sg_in_vpc "${PREFIX}-redis")"
   fi
-  reconcile_resource_id 'aws_security_group.redis' "$SG_REDIS"
+  reconcile_sg_for_vpc 'aws_security_group.redis' "${PREFIX}-redis"
 
   if [ "${TF_VAR_enable_ecs:-false}" = "true" ] || [ "${TF_VAR_enable_app_runner:-false}" = "true" ]; then
     import_compute_network
@@ -457,22 +503,11 @@ if [ "${TF_VAR_enable_ecs:-false}" = "true" ] || [ "${TF_VAR_enable_app_runner:-
   import_compute_ecs
 fi
 
-# Reconciliación final SG/TG (evita replace por IDs de VPC huérfana).
+# Reconciliación final SG/TG (evita cross-VPC entre ALB y ECS).
 if [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ]; then
-  SG_REDIS="$(discover_redis_security_group)"
-  if [ -z "$SG_REDIS" ] || [ "$SG_REDIS" = "None" ]; then
-    SG_REDIS="$(discover_sg_in_vpc "${PREFIX}-redis")"
-  fi
-  reconcile_resource_id 'aws_security_group.redis' "$SG_REDIS"
-
-  SG_CONN="$(discover_sg_in_vpc "${PREFIX}-ecs")"
-  reconcile_resource_id 'aws_security_group.ecs_tasks[0]' "$SG_CONN"
-
-  SG_ALB="$(discover_alb_sg)"
-  if ! aws_value_ok "$SG_ALB"; then
-    SG_ALB="$(discover_sg_in_vpc "${PREFIX}-alb")"
-  fi
-  reconcile_resource_id 'aws_security_group.alb[0]' "$SG_ALB"
+  reconcile_sg_for_vpc 'aws_security_group.redis' "${PREFIX}-redis"
+  reconcile_sg_for_vpc 'aws_security_group.ecs_tasks[0]' "${PREFIX}-ecs"
+  reconcile_sg_for_vpc 'aws_security_group.alb[0]' "${PREFIX}-alb"
 
   tg_arn="$(aws elbv2 describe-target-groups \
     --names "${PREFIX}-backend" \
