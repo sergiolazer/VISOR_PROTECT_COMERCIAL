@@ -49,8 +49,7 @@ resource "aws_security_group" "alb" {
   }
 
   lifecycle {
-    prevent_destroy = true
-    ignore_changes  = [name, description, ingress, egress]
+    ignore_changes = [name, description, ingress, egress]
   }
 }
 
@@ -77,8 +76,7 @@ resource "aws_security_group" "ecs_tasks" {
   }
 
   lifecycle {
-    prevent_destroy = true
-    ignore_changes  = [name, description, ingress, egress]
+    ignore_changes = [name, description, ingress, egress]
   }
 }
 
@@ -96,8 +94,7 @@ resource "aws_lb" "backend" {
   }
 
   lifecycle {
-    prevent_destroy = true
-    ignore_changes  = [name, security_groups, subnets]
+    ignore_changes = [name, security_groups, subnets]
   }
 }
 
@@ -128,8 +125,7 @@ resource "aws_lb_target_group" "backend" {
   }
 
   lifecycle {
-    prevent_destroy = true
-    ignore_changes  = [name, health_check, stickiness]
+    ignore_changes = [name, health_check, stickiness]
   }
 }
 
@@ -146,8 +142,7 @@ resource "aws_lb_listener" "http" {
   }
 
   lifecycle {
-    prevent_destroy = true
-    ignore_changes  = [default_action]
+    ignore_changes = [default_action]
   }
 }
 

@@ -23,7 +23,6 @@ resource "aws_subnet" "public_a" {
   }
 
   lifecycle {
-    prevent_destroy = true
     ignore_changes  = [availability_zone, tags, tags_all, map_public_ip_on_launch, vpc_id]
   }
 }
@@ -41,7 +40,6 @@ resource "aws_subnet" "public_b" {
   }
 
   lifecycle {
-    prevent_destroy = true
     ignore_changes  = [availability_zone, tags, tags_all, map_public_ip_on_launch, vpc_id]
   }
 }

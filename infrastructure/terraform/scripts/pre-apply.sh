@@ -13,7 +13,20 @@ export TF_VAR_enable_app_runner="${TF_VAR_enable_app_runner:-false}"
 tf_plan() {
   timeout "$PLAN_TIMEOUT" terraform plan -input=false -no-color -out=pre-apply.plan -detailed-exitcode \
     -var="enable_ecs=${TF_VAR_enable_ecs}" \
-    -var="enable_app_runner=${TF_VAR_enable_app_runner}"
+    -var="enable_app_runner=${TF_VAR_enable_app_runner}" \
+    -var="github_org=${TF_VAR_github_org:?TF_VAR_github_org requerido}" \
+    -var="cors_origin=${TF_VAR_cors_origin:?TF_VAR_cors_origin requerido}" \
+    -var="aws_region=${TF_VAR_aws_region:-sa-east-1}"
+}
+
+tf_plan_diagnose() {
+  echo "[pre-apply] Diagnóstico terraform plan:"
+  terraform plan -input=false -no-color \
+    -var="enable_ecs=${TF_VAR_enable_ecs}" \
+    -var="enable_app_runner=${TF_VAR_enable_app_runner}" \
+    -var="github_org=${TF_VAR_github_org:?}" \
+    -var="cors_origin=${TF_VAR_cors_origin:?}" \
+    -var="aws_region=${TF_VAR_aws_region:-sa-east-1}" 2>&1 | tail -80 || true
 }
 
 tf_apply() {
@@ -87,6 +100,7 @@ fi
 
 if [ "$ec" -eq 1 ]; then
   echo "::error::terraform plan falló (exit 1)"
+  tf_plan_diagnose
   log_plan_summary
   exit 1
 fi
@@ -130,6 +144,7 @@ for round in 1 2; do
 
   if [ "$ec" -eq 1 ]; then
     echo "::error::terraform plan falló tras import-plan-creates (ronda $round)"
+    tf_plan_diagnose
     log_plan_summary
     exit 1
   fi
