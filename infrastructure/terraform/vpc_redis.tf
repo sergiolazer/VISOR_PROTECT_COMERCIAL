@@ -58,7 +58,7 @@ resource "aws_security_group" "redis" {
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [description, name, name_prefix]
+    ignore_changes  = [description, name, name_prefix, vpc_id, egress]
   }
 }
 

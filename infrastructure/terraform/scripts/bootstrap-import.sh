@@ -457,6 +457,34 @@ if [ "${TF_VAR_enable_ecs:-false}" = "true" ] || [ "${TF_VAR_enable_app_runner:-
   import_compute_ecs
 fi
 
+# Reconciliación final SG/TG (evita replace por IDs de VPC huérfana).
+if [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ]; then
+  SG_REDIS="$(discover_redis_security_group)"
+  if [ -z "$SG_REDIS" ] || [ "$SG_REDIS" = "None" ]; then
+    SG_REDIS="$(discover_sg_in_vpc "${PREFIX}-redis")"
+  fi
+  reconcile_resource_id 'aws_security_group.redis' "$SG_REDIS"
+
+  SG_CONN="$(discover_sg_in_vpc "${PREFIX}-ecs")"
+  reconcile_resource_id 'aws_security_group.ecs_tasks[0]' "$SG_CONN"
+
+  SG_ALB="$(discover_alb_sg)"
+  if ! aws_value_ok "$SG_ALB"; then
+    SG_ALB="$(discover_sg_in_vpc "${PREFIX}-alb")"
+  fi
+  reconcile_resource_id 'aws_security_group.alb[0]' "$SG_ALB"
+
+  tg_arn="$(aws elbv2 describe-target-groups \
+    --names "${PREFIX}-backend" \
+    --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || echo "")"
+  if [ -z "$tg_arn" ] || [ "$tg_arn" = "None" ]; then
+    tg_arn="$(aws elbv2 describe-target-groups \
+      --query "TargetGroups[?TargetGroupName=='${PREFIX}-backend'].TargetGroupArn | [0]" \
+      --output text 2>/dev/null || echo "")"
+  fi
+  reconcile_resource_id 'aws_lb_target_group.backend[0]' "$tg_arn"
+fi
+
 assert_in_state_if_exists \
   'aws_ecr_repository.backend' \
   "aws ecr describe-repositories --repository-names ${ECR_REPO} --query 'repositories[0].repositoryName' --output text" \
@@ -481,6 +509,19 @@ assert_in_state_if_exists \
   'aws_elasticache_subnet_group.redis' \
   "aws elasticache describe-cache-subnet-groups --cache-subnet-group-name ${PREFIX}-redis --query 'CacheSubnetGroups[0].CacheSubnetGroupName' --output text" \
   "${PREFIX}-redis"
+
+if [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ]; then
+  SG_REDIS_ASSERT="$(discover_redis_security_group)"
+  if [ -z "$SG_REDIS_ASSERT" ] || [ "$SG_REDIS_ASSERT" = "None" ]; then
+    SG_REDIS_ASSERT="$(discover_sg_in_vpc "${PREFIX}-redis")"
+  fi
+  if aws_value_ok "$SG_REDIS_ASSERT"; then
+    assert_in_state_if_exists \
+      'aws_security_group.redis' \
+      "aws ec2 describe-security-groups --group-ids $SG_REDIS_ASSERT" \
+      "$SG_REDIS_ASSERT"
+  fi
+fi
 
 purge_ephemeral_ecs_state "$PREFIX"
 

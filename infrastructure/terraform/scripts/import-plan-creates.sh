@@ -33,10 +33,17 @@ import_if_planned_create() {
 
   [ -z "$aws_id" ] || [ "$aws_id" = "None" ] && return 0
 
+  if terraform state show -no-color "$addr" >/dev/null 2>&1; then
+    echo "[import-plan-creates] ya en state: $addr"
+    return 0
+  fi
+
+  # Solo import puro "create" — no "replace" (delete+create) que ya está en state.
   if ! terraform show -json "$PLAN_FILE" | jq -e --arg a "$addr" '
     [.resource_changes[]
       | select(.address == $a)
       | select([.change.actions[]] | any(. == "create"))
+      | select([.change.actions[]] | any(. == "delete" or . == "destroy") | not)
     ] | length > 0
   ' >/dev/null 2>&1; then
     return 0

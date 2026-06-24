@@ -67,7 +67,20 @@ plan_has_compute_deletes() {
   terraform show -json pre-apply.plan 2>/dev/null | jq -e '
     [.resource_changes[]
       | select([.change.actions[]] | any(. == "delete" or . == "destroy"))
+      | select([.change.actions[]] | any(. == "create") | not)
       | select(.address | test("aws_security_group\\.(alb|ecs_tasks)|aws_lb\\.|aws_lb_target_group|aws_lb_listener"))
+    ] | length > 0
+  ' >/dev/null 2>&1
+}
+
+plan_has_compute_replace() {
+  terraform show -json pre-apply.plan 2>/dev/null | jq -e '
+    [.resource_changes[]
+      | select(
+          ([.change.actions[]] | any(. == "delete" or . == "destroy"))
+          and ([.change.actions[]] | any(. == "create"))
+        )
+      | select(.address | test("aws_security_group\\.(alb|ecs_tasks|redis)|aws_lb_target_group"))
     ] | length > 0
   ' >/dev/null 2>&1
 }
@@ -155,13 +168,24 @@ for round in 1 2; do
     bash "$SCRIPTS/import-plan-creates.sh" pre-apply.plan
     continue
   fi
+
+  if plan_has_compute_replace; then
+    echo "[pre-apply] Replace ALB/SG/TG detectado — re-sync state (ronda $round)..."
+    sync_state
+    bash "$SCRIPTS/import-plan-creates.sh" pre-apply.plan
+    continue
+  fi
   break
 done
 
 if plan_has_compute_deletes; then
-  echo "::error::El plan sigue queriendo borrar ALB/SG/TG — revisar drift de VPC."
+  echo "::error::El plan quiere destruir ALB/SG/TG sin recrearlos."
   log_plan_summary
   exit 1
+fi
+
+if plan_has_compute_replace; then
+  echo "::warning::El plan aún propone replace en ALB/SG/TG — continuando (ignore_changes activo)."
 fi
 
 log_plan_summary

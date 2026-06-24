@@ -49,7 +49,7 @@ resource "aws_security_group" "alb" {
   }
 
   lifecycle {
-    ignore_changes = [name, description, ingress, egress]
+    ignore_changes = [name, description, ingress, egress, vpc_id]
   }
 }
 
@@ -76,7 +76,7 @@ resource "aws_security_group" "ecs_tasks" {
   }
 
   lifecycle {
-    ignore_changes = [name, description, ingress, egress]
+    ignore_changes = [name, description, ingress, egress, vpc_id]
   }
 }
 
@@ -125,7 +125,7 @@ resource "aws_lb_target_group" "backend" {
   }
 
   lifecycle {
-    ignore_changes = [name, health_check, stickiness]
+    ignore_changes = [name, health_check, stickiness, vpc_id]
   }
 }
 
