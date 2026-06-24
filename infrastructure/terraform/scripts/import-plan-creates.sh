@@ -21,18 +21,10 @@ OIDC_ARN="arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubuserconte
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/aws-probe.sh"
 # shellcheck source=import-shared.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/import-shared.sh"
+# shellcheck source=terraform-import-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/terraform-import-lib.sh"
 
 IMPORT_TIMEOUT="${TF_IMPORT_TIMEOUT_SEC:-180}"
-
-terraform_import() {
-  terraform import -input=false \
-    -var="enable_ecs=${TF_VAR_enable_ecs:-false}" \
-    -var="enable_app_runner=${TF_VAR_enable_app_runner:-false}" \
-    -var="github_org=${TF_VAR_github_org:-bootstrap-import}" \
-    -var="cors_origin=${TF_VAR_cors_origin:-http://localhost:5173}" \
-    -var="aws_region=${AWS_REGION}" \
-    "$@"
-}
 
 import_if_planned_create() {
   local addr="$1"
@@ -56,7 +48,7 @@ import_if_planned_create() {
   fi
 
   echo "[import-plan-creates] $addr <- $aws_id"
-  if ! timeout "$IMPORT_TIMEOUT" terraform_import "$addr" "$aws_id"; then
+  if ! run_terraform_import "$addr" "$aws_id"; then
     local import_ec=$?
     if [ "$import_ec" -eq 124 ]; then
       echo "::warning::Import de $addr excedió ${IMPORT_TIMEOUT}s"

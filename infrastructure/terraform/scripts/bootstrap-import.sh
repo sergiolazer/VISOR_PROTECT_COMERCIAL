@@ -24,30 +24,33 @@ IMPORT_TIMEOUT="${TF_IMPORT_TIMEOUT_SEC:-180}"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/aws-probe.sh"
 # shellcheck source=import-shared.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/import-shared.sh"
+# shellcheck source=terraform-import-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/terraform-import-lib.sh"
 
 in_state() {
   terraform state show -no-color "$1" >/dev/null 2>&1
 }
 
-# Recursos con count=0 si enable_ecs=false — import requiere las mismas vars que el apply.
+# Alias para reconcile_resource_id (sin timeout obligatorio).
 terraform_import() {
-  terraform import -input=false \
-    -var="enable_ecs=${TF_VAR_enable_ecs:-false}" \
-    -var="enable_app_runner=${TF_VAR_enable_app_runner:-false}" \
-    -var="github_org=${TF_VAR_github_org:-bootstrap-import}" \
-    -var="cors_origin=${TF_VAR_cors_origin:-http://localhost:5173}" \
-    -var="aws_region=${AWS_REGION}" \
-    "$@"
+  run_terraform_import "$@"
 }
 
 assert_in_state_if_exists() {
   local addr="$1"
   local probe="$2"
+  local import_id="${3:-}"
 
   if aws_probe_ok "$probe"; then
     if ! in_state "$addr"; then
-      echo "::error::El recurso existe en AWS pero no quedó en state tras import: $addr"
-      exit 1
+      if [ -n "$import_id" ]; then
+        echo "[bootstrap-import] Reintento import para $addr"
+        import_when_needed "$addr" "$import_id" "$probe"
+      fi
+      if ! in_state "$addr"; then
+        echo "::error::El recurso existe en AWS pero no quedó en state tras import: $addr"
+        exit 1
+      fi
     fi
   fi
 }
@@ -71,7 +74,7 @@ import_when_needed() {
   fi
 
   echo "[bootstrap-import] Importando $addr <- $id"
-  if timeout "$IMPORT_TIMEOUT" terraform_import "$addr" "$id"; then
+  if run_terraform_import "$addr" "$id"; then
     if in_state "$addr"; then
       echo "[bootstrap-import] OK: $addr"
       return 0
@@ -456,23 +459,28 @@ fi
 
 assert_in_state_if_exists \
   'aws_ecr_repository.backend' \
-  "aws ecr describe-repositories --repository-names ${ECR_REPO} --query 'repositories[0].repositoryName' --output text"
+  "aws ecr describe-repositories --repository-names ${ECR_REPO} --query 'repositories[0].repositoryName' --output text" \
+  "$ECR_REPO"
 
 assert_in_state_if_exists \
   'aws_s3_bucket.media' \
-  "aws s3api list-buckets --query \"Buckets[?Name=='${PREFIX}-media-${ACCOUNT_ID}'].Name | [0]\" --output text"
+  "aws s3api list-buckets --query \"Buckets[?Name=='${PREFIX}-media-${ACCOUNT_ID}'].Name | [0]\" --output text" \
+  "${PREFIX}-media-${ACCOUNT_ID}"
 
 assert_in_state_if_exists \
   'aws_secretsmanager_secret.mongo_uri' \
-  "aws secretsmanager describe-secret --secret-id ${PREFIX}/mongo-uri --query 'Name' --output text"
+  "aws secretsmanager describe-secret --secret-id ${PREFIX}/mongo-uri --query 'Name' --output text" \
+  "${PREFIX}/mongo-uri"
 
 assert_in_state_if_exists \
   'aws_iam_openid_connect_provider.github' \
-  "aws iam get-open-id-connect-provider --open-id-connect-provider-arn ${OIDC_ARN} --query 'Url' --output text"
+  "aws iam get-open-id-connect-provider --open-id-connect-provider-arn ${OIDC_ARN} --query 'Url' --output text" \
+  "$OIDC_ARN"
 
 assert_in_state_if_exists \
   'aws_elasticache_subnet_group.redis' \
-  "aws elasticache describe-cache-subnet-groups --cache-subnet-group-name ${PREFIX}-redis --query 'CacheSubnetGroups[0].CacheSubnetGroupName' --output text"
+  "aws elasticache describe-cache-subnet-groups --cache-subnet-group-name ${PREFIX}-redis --query 'CacheSubnetGroups[0].CacheSubnetGroupName' --output text" \
+  "${PREFIX}-redis"
 
 purge_ephemeral_ecs_state "$PREFIX"
 
