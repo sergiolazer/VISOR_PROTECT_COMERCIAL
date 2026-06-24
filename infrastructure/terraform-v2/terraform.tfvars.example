@@ -1,0 +1,9 @@
+github_org  = "tu-org-github"
+cors_origin = "https://tu-app.vercel.app"
+
+enable_ecs                = true
+discover_existing_network = true
+vpc_name_tag              = "visor-protect-production-vpc"
+
+aws_region        = "sa-east-1"
+ecs_desired_count = 1
