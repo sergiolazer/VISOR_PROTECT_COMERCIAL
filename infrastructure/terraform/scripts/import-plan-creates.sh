@@ -14,6 +14,11 @@ PREFIX="${PROJECT}-${ENV}"
 AWS_REGION="${TF_VAR_aws_region:-sa-east-1}"
 export AWS_DEFAULT_REGION="$AWS_REGION"
 
+# shellcheck source=aws-probe.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/aws-probe.sh"
+
+IMPORT_TIMEOUT="${TF_IMPORT_TIMEOUT_SEC:-180}"
+
 terraform_import() {
   terraform import -input=false \
     -var="enable_ecs=${TF_VAR_enable_ecs:-false}" \
@@ -40,13 +45,20 @@ import_if_planned_create() {
     return 0
   fi
 
-  if [ -n "$probe" ] && ! bash -c "$probe" >/dev/null 2>&1; then
+  if [ -n "$probe" ] && ! aws_probe_ok "$probe"; then
     echo "[import-plan-creates] $addr planeado create pero no existe en AWS — OK"
     return 0
   fi
 
   echo "[import-plan-creates] $addr <- $aws_id"
-  terraform_import "$addr" "$aws_id" || echo "::warning::Import falló: $addr"
+  if ! timeout "$IMPORT_TIMEOUT" terraform_import "$addr" "$aws_id"; then
+    local import_ec=$?
+    if [ "$import_ec" -eq 124 ]; then
+      echo "::warning::Import de $addr excedió ${IMPORT_TIMEOUT}s"
+    else
+      echo "::warning::Import falló: $addr"
+    fi
+  fi
 }
 
 echo "[import-plan-creates] Procesando creates del plan..."
@@ -116,18 +128,20 @@ import_if_planned_create \
   "${PREFIX}-backend" \
   "aws ecs describe-clusters --clusters ${PREFIX}-backend --query 'clusters[?status==\`ACTIVE\`].clusterName' --output text"
 
-SERVICE_ARN="$(aws ecs describe-services --cluster "${PREFIX}-backend" --services "${PREFIX}-backend" --query 'services[0].serviceArn' --output text 2>/dev/null || echo "")"
-if [ -n "$SERVICE_ARN" ] && [ "$SERVICE_ARN" != "None" ]; then
+SERVICE_ARN="$(ecs_service_arn "$PREFIX" 2>/dev/null || echo "")"
+if aws_value_ok "$SERVICE_ARN"; then
   import_if_planned_create \
     'aws_ecs_service.backend[0]' \
     "${PREFIX}-backend/${PREFIX}-backend" \
-    "aws ecs describe-services --cluster ${PREFIX}-backend --services ${PREFIX}-backend --query 'services[0].serviceArn'"
+    "aws ecs describe-services --cluster ${PREFIX}-backend --services ${PREFIX}-backend --query 'services[0].serviceArn' --output text"
 else
   echo "[import-plan-creates] ECS service no existe — se creará en apply si el plan lo pide"
 fi
 
-TASK_DEF="$(aws ecs describe-services --cluster "${PREFIX}-backend" --services "${PREFIX}-backend" --query 'services[0].taskDefinition' --output text 2>/dev/null || echo "")"
-import_if_planned_create 'aws_ecs_task_definition.backend[0]' "$TASK_DEF" "aws ecs describe-services --cluster ${PREFIX}-backend --services ${PREFIX}-backend"
+if aws_value_ok "$SERVICE_ARN"; then
+  TASK_DEF="$(aws ecs describe-services --cluster "${PREFIX}-backend" --services "${PREFIX}-backend" --query 'services[0].taskDefinition' --output text 2>/dev/null || echo "")"
+  import_if_planned_create 'aws_ecs_task_definition.backend[0]' "$TASK_DEF" "aws ecs describe-services --cluster ${PREFIX}-backend --services ${PREFIX}-backend --query 'services[0].taskDefinition' --output text"
+fi
 
 # Subnets por CIDR en VPC ancla
 if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then

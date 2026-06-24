@@ -18,6 +18,10 @@ ECR_REPO="${PROJECT}-backend"
 OIDC_ARN="arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
 
 IMPORT_ERRORS=0
+IMPORT_TIMEOUT="${TF_IMPORT_TIMEOUT_SEC:-180}"
+
+# shellcheck source=aws-probe.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/aws-probe.sh"
 
 in_state() {
   terraform state show -no-color "$1" >/dev/null 2>&1
@@ -38,7 +42,7 @@ assert_in_state_if_exists() {
   local addr="$1"
   local probe="$2"
 
-  if bash -c "$probe" >/dev/null 2>&1; then
+  if aws_probe_ok "$probe"; then
     if ! in_state "$addr"; then
       echo "::error::El recurso existe en AWS pero no quedó en state tras import: $addr"
       exit 1
@@ -58,21 +62,26 @@ import_when_needed() {
   fi
 
   if [ -n "$probe" ]; then
-    if ! bash -c "$probe" >/dev/null 2>&1; then
+    if ! aws_probe_ok "$probe"; then
       echo "[bootstrap-import] No existe en AWS, omitiendo: $addr"
       return 0
     fi
   fi
 
   echo "[bootstrap-import] Importando $addr <- $id"
-  if terraform_import "$addr" "$id"; then
+  if timeout "$IMPORT_TIMEOUT" terraform_import "$addr" "$id"; then
     if in_state "$addr"; then
       echo "[bootstrap-import] OK: $addr"
       return 0
     fi
     echo "::warning::Import reportó éxito pero $addr no está en state"
   else
-    echo "::warning::No se pudo importar $addr (id=$id)"
+    local import_ec=$?
+    if [ "$import_ec" -eq 124 ]; then
+      echo "::warning::Import de $addr excedió ${IMPORT_TIMEOUT}s — omitiendo"
+    else
+      echo "::warning::No se pudo importar $addr (id=$id)"
+    fi
   fi
 
   IMPORT_ERRORS=$((IMPORT_ERRORS + 1))
@@ -92,7 +101,7 @@ reconcile_resource_id() {
   [ -z "$aws_id" ] || [ "$aws_id" = "None" ] && return 0
 
   if [ -n "$probe" ]; then
-    if ! bash -c "$probe" >/dev/null 2>&1; then
+    if ! aws_probe_ok "$probe"; then
       return 0
     fi
   fi
@@ -433,25 +442,22 @@ import_compute_ecs() {
     reconcile_resource_id 'aws_lb_listener.http[0]' "$listener_arn"
   fi
 
-  task_def_arn="$(aws ecs describe-services \
-    --cluster "${PREFIX}-backend" \
-    --services "${PREFIX}-backend" \
-    --query 'services[0].taskDefinition' --output text 2>/dev/null || echo "")"
-  if [ -n "$task_def_arn" ] && [ "$task_def_arn" != "None" ]; then
+  task_def_arn=""
+  if arn="$(ecs_service_arn "$PREFIX" 2>/dev/null)"; then
+    task_def_arn="$(aws ecs describe-services \
+      --cluster "${PREFIX}-backend" \
+      --services "${PREFIX}-backend" \
+      --query 'services[0].taskDefinition' --output text 2>/dev/null || echo "")"
+  fi
+  if aws_value_ok "$task_def_arn"; then
     reconcile_resource_id 'aws_ecs_task_definition.backend[0]' "$task_def_arn"
   fi
 
-  service_arn="$(aws ecs describe-services \
-    --cluster "${PREFIX}-backend" \
-    --services "${PREFIX}-backend" \
-    --query 'services[0].serviceArn' --output text 2>/dev/null || echo "")"
-  if [ -n "$service_arn" ] && [ "$service_arn" != "None" ]; then
-    import_when_needed \
-      'aws_ecs_service.backend[0]' \
-      "${PREFIX}-backend/${PREFIX}-backend" \
-      "aws ecs describe-services --cluster ${PREFIX}-backend --services ${PREFIX}-backend --query 'services[0].serviceArn'"
+  # El servicio ECS se crea en apply; importarlo en bootstrap bloquea el pipeline si no existe o está INACTIVE.
+  if arn="$(ecs_service_arn "$PREFIX" 2>/dev/null)"; then
+    echo "[bootstrap-import] ECS service activo en AWS ($arn) — import diferido a import-plan-creates"
   else
-    echo "[bootstrap-import] ECS service no existe aún — Terraform lo creará en apply"
+    echo "[bootstrap-import] ECS service no existe o no está ACTIVE — Terraform lo creará en apply"
   fi
 
   assert_in_state_if_exists \
