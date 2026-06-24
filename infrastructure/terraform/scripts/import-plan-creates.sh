@@ -13,9 +13,14 @@ ENV="${TF_VAR_environment:-production}"
 PREFIX="${PROJECT}-${ENV}"
 AWS_REGION="${TF_VAR_aws_region:-sa-east-1}"
 export AWS_DEFAULT_REGION="$AWS_REGION"
+ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+ECR_REPO="${PROJECT}-backend"
+OIDC_ARN="arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
 
 # shellcheck source=aws-probe.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/aws-probe.sh"
+# shellcheck source=import-shared.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/import-shared.sh"
 
 IMPORT_TIMEOUT="${TF_IMPORT_TIMEOUT_SEC:-180}"
 
@@ -63,6 +68,8 @@ import_if_planned_create() {
 
 echo "[import-plan-creates] Procesando creates del plan..."
 
+import_shared_resources planned "$PLAN_FILE"
+
 VPC_ID=""
 CACHE_SUBNET="$(aws elasticache describe-cache-clusters \
   --cache-cluster-id "${PREFIX}-redis" \
@@ -82,7 +89,26 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
 fi
 
 SG_REDIS="$(aws elasticache describe-cache-clusters --cache-cluster-id "${PREFIX}-redis" --query 'CacheClusters[0].SecurityGroups[0].SecurityGroupId' --output text 2>/dev/null || echo "")"
+if [ -z "$SG_REDIS" ] || [ "$SG_REDIS" = "None" ]; then
+  SG_REDIS="$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=${VPC_ID}" "Name=group-name,Values=${PREFIX}-redis" --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")"
+fi
 import_if_planned_create 'aws_security_group.redis' "$SG_REDIS" "aws ec2 describe-security-groups --group-ids $SG_REDIS"
+
+SG_ALB=""
+ALB_ARN_FOR_SG="$(aws elbv2 describe-load-balancers --query "LoadBalancers[?LoadBalancerName=='${PREFIX}-backend'].LoadBalancerArn | [0]" --output text 2>/dev/null || echo "")"
+if aws_value_ok "$ALB_ARN_FOR_SG"; then
+  SG_ALB="$(aws elbv2 describe-load-balancers --load-balancer-arns "$ALB_ARN_FOR_SG" --query 'LoadBalancers[0].SecurityGroups[0]' --output text 2>/dev/null || echo "")"
+fi
+if ! aws_value_ok "$SG_ALB" && [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
+  SG_ALB="$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=${VPC_ID}" "Name=group-name,Values=${PREFIX}-alb" --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")"
+fi
+import_if_planned_create 'aws_security_group.alb[0]' "$SG_ALB" "aws ec2 describe-security-groups --group-ids $SG_ALB"
+
+SG_ECS=""
+if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
+  SG_ECS="$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=${VPC_ID}" "Name=group-name,Values=${PREFIX}-ecs" --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")"
+fi
+import_if_planned_create 'aws_security_group.ecs_tasks[0]' "$SG_ECS" "aws ec2 describe-security-groups --group-ids $SG_ECS"
 
 import_if_planned_create \
   'aws_iam_role.ecs_execution[0]' \

@@ -40,7 +40,7 @@ UNSAFE="$(
   terraform show -json "$PLAN_FILE" | jq -r '
     [.resource_changes[]
       | select([.change.actions[]] | any(. == "delete" or . == "destroy"))
-      | select(.address | test("aws_vpc\\.main|aws_subnet\\.private_[ab]|aws_subnet\\.public_[ab]|aws_security_group\\.redis|apprunner|connector"))
+      | select(.address | test("aws_vpc\\.main|aws_subnet\\.private_[ab]|aws_subnet\\.public_[ab]|aws_security_group\\.redis|aws_security_group\\.alb|aws_security_group\\.ecs_tasks|aws_lb\\.|aws_lb_target_group|aws_lb_listener|apprunner|connector"))
       | .address
     ] | unique | .[]
   '

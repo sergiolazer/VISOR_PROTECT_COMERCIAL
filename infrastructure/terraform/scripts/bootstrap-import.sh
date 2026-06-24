@@ -22,6 +22,8 @@ IMPORT_TIMEOUT="${TF_IMPORT_TIMEOUT_SEC:-180}"
 
 # shellcheck source=aws-probe.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/aws-probe.sh"
+# shellcheck source=import-shared.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/import-shared.sh"
 
 in_state() {
   terraform state show -no-color "$1" >/dev/null 2>&1
@@ -174,19 +176,26 @@ reconcile_subnet_for_vpc() {
 
 discover_sg_in_vpc() {
   local group_name="$1"
-  local sg_id
 
-  sg_id="$(aws ec2 describe-security-groups \
+  aws ec2 describe-security-groups \
     --filters "Name=vpc-id,Values=${VPC_ID}" "Name=group-name,Values=${group_name}" \
-    --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")"
+    --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo ""
+}
 
-  if [ -z "$sg_id" ] || [ "$sg_id" = "None" ]; then
-    sg_id="$(aws ec2 describe-security-groups \
-      --filters "Name=group-name,Values=${group_name}" \
-      --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")"
+discover_alb_sg() {
+  local alb_arn
+
+  alb_arn="$(aws elbv2 describe-load-balancers \
+    --query "LoadBalancers[?LoadBalancerName=='${PREFIX}-backend'].LoadBalancerArn | [0]" \
+    --output text 2>/dev/null || echo "")"
+
+  if ! aws_value_ok "$alb_arn"; then
+    echo ""
+    return 0
   fi
 
-  echo "$sg_id"
+  aws elbv2 describe-load-balancers --load-balancer-arns "$alb_arn" \
+    --query 'LoadBalancers[0].SecurityGroups[0]' --output text 2>/dev/null || echo ""
 }
 
 import_compute_network() {
@@ -253,55 +262,8 @@ if [ -z "${TF_VAR_github_org:-}" ] || [ -z "${TF_VAR_cors_origin:-}" ]; then
   echo "::warning::TF_VAR_github_org o TF_VAR_cors_origin no definidos — el import de IAM puede fallar"
 fi
 
-# --- ECR ---
-import_when_needed \
-  'aws_ecr_repository.backend' \
-  "$ECR_REPO" \
-  "aws ecr describe-repositories --repository-names ${ECR_REPO}"
-
-# --- Secrets Manager ---
-import_when_needed \
-  'aws_secretsmanager_secret.mongo_uri' \
-  "${PREFIX}/mongo-uri" \
-  "aws secretsmanager describe-secret --secret-id ${PREFIX}/mongo-uri"
-
-import_when_needed \
-  'aws_secretsmanager_secret.jwt_secret' \
-  "${PREFIX}/jwt-secret" \
-  "aws secretsmanager describe-secret --secret-id ${PREFIX}/jwt-secret"
-
-import_when_needed \
-  'aws_secretsmanager_secret.cloudinary' \
-  "${PREFIX}/cloudinary" \
-  "aws secretsmanager describe-secret --secret-id ${PREFIX}/cloudinary"
-
-# --- IAM (OIDC antes que roles que referencian su ARN) ---
-import_when_needed \
-  'aws_iam_openid_connect_provider.github' \
-  "$OIDC_ARN" \
-  "aws iam get-open-id-connect-provider --open-id-connect-provider-arn ${OIDC_ARN}"
-
-import_when_needed \
-  'aws_iam_role.github_deploy' \
-  "${PREFIX}-github-deploy" \
-  "aws iam get-role --role-name ${PREFIX}-github-deploy"
-
-import_when_needed \
-  'aws_iam_role_policy.github_deploy' \
-  "${PREFIX}-github-deploy:${PREFIX}-github-deploy" \
-  "aws iam get-role-policy --role-name ${PREFIX}-github-deploy --policy-name ${PREFIX}-github-deploy"
-
-# --- S3 ---
-import_when_needed \
-  'aws_s3_bucket.media' \
-  "${PREFIX}-media-${ACCOUNT_ID}" \
-  "aws s3api head-bucket --bucket ${PREFIX}-media-${ACCOUNT_ID} --region sa-east-1"
-
-# --- ElastiCache ---
-import_when_needed \
-  'aws_elasticache_subnet_group.redis' \
-  "${PREFIX}-redis" \
-  "aws elasticache describe-cache-subnet-groups --cache-subnet-group-name ${PREFIX}-redis"
+# --- Recursos compartidos (ECR, secrets, IAM, S3, Redis) ---
+import_shared_resources bootstrap
 
 discover_vpc_from_redis() {
   local subnet_id vpc_id cache_subnet
@@ -415,11 +377,6 @@ import_compute_ecs() {
     "${PREFIX}-backend" \
     "aws ecs describe-clusters --clusters ${PREFIX}-backend --query 'clusters[?status==\`ACTIVE\`].clusterName' --output text"
 
-  import_when_needed \
-    'aws_cloudwatch_log_group.ecs[0]' \
-    "/ecs/${PREFIX}-backend" \
-    "aws logs describe-log-groups --log-group-name-prefix /ecs/${PREFIX}-backend"
-
   alb_arn="$(aws elbv2 describe-load-balancers \
     --query "LoadBalancers[?LoadBalancerName=='${PREFIX}-backend'].LoadBalancerArn | [0]" \
     --output text 2>/dev/null || echo "")"
@@ -486,7 +443,10 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   SG_CONN="$(discover_sg_in_vpc "${PREFIX}-ecs")"
   reconcile_resource_id 'aws_security_group.ecs_tasks[0]' "$SG_CONN"
 
-  SG_ALB="$(discover_sg_in_vpc "${PREFIX}-alb")"
+  SG_ALB="$(discover_alb_sg)"
+  if ! aws_value_ok "$SG_ALB"; then
+    SG_ALB="$(discover_sg_in_vpc "${PREFIX}-alb")"
+  fi
   reconcile_resource_id 'aws_security_group.alb[0]' "$SG_ALB"
 
   SG_REDIS="$(discover_redis_security_group)"
@@ -494,11 +454,6 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
     SG_REDIS="$(discover_sg_in_vpc "${PREFIX}-redis")"
   fi
   reconcile_resource_id 'aws_security_group.redis' "$SG_REDIS"
-
-  import_when_needed \
-    'aws_elasticache_cluster.redis' \
-    "${PREFIX}-redis" \
-    "aws elasticache describe-cache-clusters --cache-cluster-id ${PREFIX}-redis"
 
   if [ "${TF_VAR_enable_ecs:-false}" = "true" ] || [ "${TF_VAR_enable_app_runner:-false}" = "true" ]; then
     import_compute_network
@@ -509,5 +464,25 @@ fi
 if [ "${TF_VAR_enable_ecs:-false}" = "true" ] || [ "${TF_VAR_enable_app_runner:-false}" = "true" ]; then
   import_compute_ecs
 fi
+
+assert_in_state_if_exists \
+  'aws_ecr_repository.backend' \
+  "aws ecr describe-repositories --repository-names ${ECR_REPO} --query 'repositories[0].repositoryName' --output text"
+
+assert_in_state_if_exists \
+  'aws_s3_bucket.media' \
+  "aws s3api list-buckets --query \"Buckets[?Name=='${PREFIX}-media-${ACCOUNT_ID}'].Name | [0]\" --output text"
+
+assert_in_state_if_exists \
+  'aws_secretsmanager_secret.mongo_uri' \
+  "aws secretsmanager describe-secret --secret-id ${PREFIX}/mongo-uri --query 'Name' --output text"
+
+assert_in_state_if_exists \
+  'aws_iam_openid_connect_provider.github' \
+  "aws iam get-open-id-connect-provider --open-id-connect-provider-arn ${OIDC_ARN} --query 'Url' --output text"
+
+assert_in_state_if_exists \
+  'aws_elasticache_subnet_group.redis' \
+  "aws elasticache describe-cache-subnet-groups --cache-subnet-group-name ${PREFIX}-redis --query 'CacheSubnetGroups[0].CacheSubnetGroupName' --output text"
 
 echo "[bootstrap-import] Completado (import warnings: ${IMPORT_ERRORS})"

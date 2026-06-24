@@ -17,9 +17,12 @@ tf_plan() {
 }
 
 tf_apply() {
-  terraform apply -input=false -auto-approve -parallelism=10 \
-    -var="enable_ecs=${TF_VAR_enable_ecs}" \
-    -var="enable_app_runner=${TF_VAR_enable_app_runner}"
+  if [ ! -f pre-apply.plan ]; then
+    echo "::error::pre-apply.plan no encontrado — no se puede aplicar"
+    exit 1
+  fi
+  # Aplicar exactamente el plan validado por guard-network-plan (evita creates/deletes sorpresa).
+  terraform apply -input=false -auto-approve -parallelism=10 pre-apply.plan
 }
 
 sync_state() {
@@ -43,6 +46,15 @@ plan_has_forbidden_deletes() {
     [.resource_changes[]
       | select([.change.actions[]] | any(. == "delete" or . == "destroy"))
       | select(.address | test("apprunner|connector|aws_subnet\\.private_[ab]|aws_vpc\\.main"))
+    ] | length > 0
+  ' >/dev/null 2>&1
+}
+
+plan_has_compute_deletes() {
+  terraform show -json pre-apply.plan 2>/dev/null | jq -e '
+    [.resource_changes[]
+      | select([.change.actions[]] | any(. == "delete" or . == "destroy"))
+      | select(.address | test("aws_security_group\\.(alb|ecs_tasks)|aws_lb\\.|aws_lb_target_group|aws_lb_listener"))
     ] | length > 0
   ' >/dev/null 2>&1
 }
@@ -110,13 +122,29 @@ fi
 echo "[pre-apply] Importando creates existentes en AWS..."
 bash "$SCRIPTS/import-plan-creates.sh" pre-apply.plan
 
-set +e
-tf_plan
-ec=$?
-set -e
+for round in 1 2; do
+  set +e
+  tf_plan
+  ec=$?
+  set -e
 
-if [ "$ec" -eq 1 ]; then
-  echo "::error::terraform plan falló tras import-plan-creates"
+  if [ "$ec" -eq 1 ]; then
+    echo "::error::terraform plan falló tras import-plan-creates (ronda $round)"
+    log_plan_summary
+    exit 1
+  fi
+
+  if plan_has_compute_deletes; then
+    echo "[pre-apply] Deletes en ALB/ECS detectados — re-sync state (ronda $round)..."
+    sync_state
+    bash "$SCRIPTS/import-plan-creates.sh" pre-apply.plan
+    continue
+  fi
+  break
+done
+
+if plan_has_compute_deletes; then
+  echo "::error::El plan sigue queriendo borrar ALB/SG/TG — revisar drift de VPC."
   log_plan_summary
   exit 1
 fi

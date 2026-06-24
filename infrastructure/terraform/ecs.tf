@@ -47,6 +47,11 @@ resource "aws_security_group" "alb" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [name, description, ingress, egress]
+  }
 }
 
 resource "aws_security_group" "ecs_tasks" {
@@ -70,6 +75,11 @@ resource "aws_security_group" "ecs_tasks" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [name, description, ingress, egress]
+  }
 }
 
 resource "aws_lb" "backend" {
@@ -83,6 +93,11 @@ resource "aws_lb" "backend" {
 
   tags = {
     Name = "${local.name_prefix}-backend-alb"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [name, security_groups, subnets]
   }
 }
 
@@ -111,6 +126,11 @@ resource "aws_lb_target_group" "backend" {
     cookie_duration = 86400
     enabled         = true
   }
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [name, health_check, stickiness]
+  }
 }
 
 resource "aws_lb_listener" "http" {
@@ -123,6 +143,11 @@ resource "aws_lb_listener" "http" {
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.backend[0].arn
+  }
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [default_action]
   }
 }
 
