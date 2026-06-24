@@ -5,6 +5,13 @@ set -uo pipefail
 TF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$TF_DIR"
 
+PROJECT="${TF_VAR_project_name:-visor-protect}"
+ENV="${TF_VAR_environment:-production}"
+PREFIX="${PROJECT}-${ENV}"
+
+# shellcheck source=aws-probe.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/aws-probe.sh"
+
 KNOWN_ORPHAN_SG="sg-0dbb342ef24119cb9"
 KNOWN_PRIVATE_SUBNET="subnet-0f19bd9d7914446de"
 
@@ -53,7 +60,7 @@ purge_legacy_from_state() {
         )
       | .instances |= [
           .[]
-          | select((has("deposed") and (.deposed | type) == "string")) | not)
+          | select(has("deposed") | not)
           | del(.deposed_key)
         ]
     ]
@@ -111,12 +118,12 @@ STABLE=(
   'aws_iam_role_policy_attachment.ecs_execution[0]'
   'aws_iam_role_policy.ecs_execution_secrets[0]'
   'aws_iam_role_policy.ecs_task[0]'
-  'aws_ecs_task_definition.backend[0]'
   'aws_ecs_cluster.backend[0]'
-  'aws_ecs_service.backend[0]'
 )
 
 purge_legacy_from_state
+
+purge_ephemeral_ecs_state "$PREFIX"
 
 for addr in "${STABLE[@]}"; do
   if terraform state show -no-color "$addr" >/dev/null 2>&1; then

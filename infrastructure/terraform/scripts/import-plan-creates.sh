@@ -154,20 +154,8 @@ import_if_planned_create \
   "${PREFIX}-backend" \
   "aws ecs describe-clusters --clusters ${PREFIX}-backend --query 'clusters[?status==\`ACTIVE\`].clusterName' --output text"
 
-SERVICE_ARN="$(ecs_service_arn "$PREFIX" 2>/dev/null || echo "")"
-if aws_value_ok "$SERVICE_ARN"; then
-  import_if_planned_create \
-    'aws_ecs_service.backend[0]' \
-    "${PREFIX}-backend/${PREFIX}-backend" \
-    "aws ecs describe-services --cluster ${PREFIX}-backend --services ${PREFIX}-backend --query 'services[0].serviceArn' --output text"
-else
-  echo "[import-plan-creates] ECS service no existe — se creará en apply si el plan lo pide"
-fi
-
-if aws_value_ok "$SERVICE_ARN"; then
-  TASK_DEF="$(aws ecs describe-services --cluster "${PREFIX}-backend" --services "${PREFIX}-backend" --query 'services[0].taskDefinition' --output text 2>/dev/null || echo "")"
-  import_if_planned_create 'aws_ecs_task_definition.backend[0]' "$TASK_DEF" "aws ecs describe-services --cluster ${PREFIX}-backend --services ${PREFIX}-backend --query 'services[0].taskDefinition' --output text"
-fi
+# aws_ecs_service.backend[0] — NUNCA importar (causa hangs y fallos MISSING). Apply lo crea.
+echo "[import-plan-creates] ECS service: omitido (create vía apply si el plan lo indica)"
 
 # Subnets por CIDR en VPC ancla
 if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then

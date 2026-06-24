@@ -1,4 +1,4 @@
-# Helpers compartidos — source desde bootstrap-import / import-plan-creates.
+# Helpers compartidos — source desde bootstrap-import / import-plan-creates / reconcile-state.
 
 aws_value_ok() {
   local value="${1:-}"
@@ -20,22 +20,35 @@ aws_probe_ok() {
   aws_value_ok "$out"
 }
 
-# Devuelve serviceArn solo si el servicio ECS existe y está ACTIVE o DRAINING.
+# Devuelve serviceArn solo si el servicio ECS existe, coincide por nombre y está ACTIVE/DRAINING.
 ecs_service_arn() {
   local prefix="${1:?}"
-  local json arn status failure_count
+  local service_name="${prefix}-backend"
+  local cluster_name="${prefix}-backend"
+  local json arn status failure_count service_name_actual
 
   json="$(aws ecs describe-services \
-    --cluster "${prefix}-backend" \
-    --services "${prefix}-backend" \
+    --cluster "$cluster_name" \
+    --services "$service_name" \
     --output json 2>/dev/null)" || return 1
 
-  failure_count="$(echo "$json" | jq -r '.failures | length' 2>/dev/null || echo "0")"
-  arn="$(echo "$json" | jq -r '.services[0].serviceArn // empty' 2>/dev/null || echo "")"
-  status="$(echo "$json" | jq -r '.services[0].status // empty' 2>/dev/null || echo "")"
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "$json" | grep -q '"reason"[[:space:]]*:[[:space:]]*"MISSING"' && return 1
+    arn="$(echo "$json" | sed -n 's/.*"serviceArn"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+    status="$(echo "$json" | sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+  else
+    failure_count="$(echo "$json" | jq -r '.failures | length' 2>/dev/null || echo "0")"
+    arn="$(echo "$json" | jq -r '.services[0].serviceArn // empty' 2>/dev/null || echo "")"
+    status="$(echo "$json" | jq -r '.services[0].status // empty' 2>/dev/null || echo "")"
+    service_name_actual="$(echo "$json" | jq -r '.services[0].serviceName // empty' 2>/dev/null || echo "")"
 
-  if [ "${failure_count:-0}" -gt 0 ] && ! aws_value_ok "$arn"; then
-    return 1
+    if [ "${failure_count:-0}" -gt 0 ] && ! aws_value_ok "$arn"; then
+      return 1
+    fi
+
+    if aws_value_ok "$service_name_actual" && [ "$service_name_actual" != "$service_name" ]; then
+      return 1
+    fi
   fi
 
   if ! aws_value_ok "$arn"; then
@@ -51,4 +64,21 @@ ecs_service_arn() {
       return 1
       ;;
   esac
+}
+
+# Quita del state recursos ECS efímeros si no existen en AWS (nunca importar el service).
+purge_ephemeral_ecs_state() {
+  local prefix="${1:?}"
+  local addr
+
+  if ! ecs_service_arn "$prefix" >/dev/null 2>&1; then
+    for addr in \
+      'aws_ecs_service.backend[0]' \
+      'aws_ecs_task_definition.backend[0]'; do
+      if terraform state show -no-color "$addr" >/dev/null 2>&1; then
+        echo "[purge-ephemeral-ecs] state rm $addr (no hay servicio ACTIVE en AWS)"
+        terraform state rm "$addr" 2>/dev/null || true
+      fi
+    done
+  fi
 }

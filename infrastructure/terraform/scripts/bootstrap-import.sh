@@ -399,22 +399,11 @@ import_compute_ecs() {
     reconcile_resource_id 'aws_lb_listener.http[0]' "$listener_arn"
   fi
 
-  task_def_arn=""
-  if arn="$(ecs_service_arn "$PREFIX" 2>/dev/null)"; then
-    task_def_arn="$(aws ecs describe-services \
-      --cluster "${PREFIX}-backend" \
-      --services "${PREFIX}-backend" \
-      --query 'services[0].taskDefinition' --output text 2>/dev/null || echo "")"
-  fi
-  if aws_value_ok "$task_def_arn"; then
-    reconcile_resource_id 'aws_ecs_task_definition.backend[0]' "$task_def_arn"
-  fi
-
-  # El servicio ECS se crea en apply; importarlo en bootstrap bloquea el pipeline si no existe o está INACTIVE.
-  if arn="$(ecs_service_arn "$PREFIX" 2>/dev/null)"; then
-    echo "[bootstrap-import] ECS service activo en AWS ($arn) — import diferido a import-plan-creates"
+  # Nunca importar aws_ecs_service: si no existe en AWS, apply lo crea; si hay drift, purge_ephemeral_ecs_state lo limpia.
+  if ecs_service_arn "$PREFIX" >/dev/null 2>&1; then
+    echo "[bootstrap-import] ECS service ACTIVE en AWS — gestionado por Terraform apply (sin import)"
   else
-    echo "[bootstrap-import] ECS service no existe o no está ACTIVE — Terraform lo creará en apply"
+    echo "[bootstrap-import] ECS service ausente — se creará en apply"
   fi
 
   assert_in_state_if_exists \
@@ -484,5 +473,7 @@ assert_in_state_if_exists \
 assert_in_state_if_exists \
   'aws_elasticache_subnet_group.redis' \
   "aws elasticache describe-cache-subnet-groups --cache-subnet-group-name ${PREFIX}-redis --query 'CacheSubnetGroups[0].CacheSubnetGroupName' --output text"
+
+purge_ephemeral_ecs_state "$PREFIX"
 
 echo "[bootstrap-import] Completado (import warnings: ${IMPORT_ERRORS})"
