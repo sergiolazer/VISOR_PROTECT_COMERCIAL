@@ -441,10 +441,18 @@ import_compute_ecs() {
     reconcile_resource_id 'aws_ecs_task_definition.backend[0]' "$task_def_arn"
   fi
 
-  reconcile_resource_id \
-    'aws_ecs_service.backend[0]' \
-    "${PREFIX}-backend/${PREFIX}-backend" \
-    "aws ecs describe-services --cluster ${PREFIX}-backend --services ${PREFIX}-backend --query 'services[?status==\`ACTIVE\`].serviceName' --output text"
+  service_arn="$(aws ecs describe-services \
+    --cluster "${PREFIX}-backend" \
+    --services "${PREFIX}-backend" \
+    --query 'services[0].serviceArn' --output text 2>/dev/null || echo "")"
+  if [ -n "$service_arn" ] && [ "$service_arn" != "None" ]; then
+    import_when_needed \
+      'aws_ecs_service.backend[0]' \
+      "${PREFIX}-backend/${PREFIX}-backend" \
+      "aws ecs describe-services --cluster ${PREFIX}-backend --services ${PREFIX}-backend --query 'services[0].serviceArn'"
+  else
+    echo "[bootstrap-import] ECS service no existe aún — Terraform lo creará en apply"
+  fi
 
   assert_in_state_if_exists \
     'aws_iam_role.ecs_execution[0]' \
@@ -454,7 +462,7 @@ import_compute_ecs() {
     "aws iam get-role --role-name ${PREFIX}-ecs-task"
   assert_in_state_if_exists \
     'aws_lb_target_group.backend[0]' \
-    "aws elbv2 describe-target-groups --names ${PREFIX}-backend"
+    "aws elbv2 describe-target-groups --query \"TargetGroups[?TargetGroupName=='${PREFIX}-backend'].TargetGroupArn | [0]\""
 }
 
 # --- VPC / networking (VPC = la que contiene las subnets reales por CIDR) ---

@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Pre-apply atómico: import → reconcile → plan → guard → apply (máx. 3 rondas).
+# Pre-apply: sync → plan → import creates → plan → guard → apply.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TF_DIR="${ROOT}/infrastructure/terraform"
 SCRIPTS="${ROOT}/infrastructure/terraform/scripts"
-MAX_ROUNDS="${TF_PREAPPLY_MAX_ROUNDS:-3}"
 PLAN_TIMEOUT="${TF_PLAN_TIMEOUT_SEC:-600}"
 
 export TF_VAR_enable_ecs="${TF_VAR_enable_ecs:-false}"
@@ -17,6 +16,12 @@ tf_plan() {
     -var="enable_app_runner=${TF_VAR_enable_app_runner}"
 }
 
+tf_apply() {
+  terraform apply -input=false -auto-approve -parallelism=10 \
+    -var="enable_ecs=${TF_VAR_enable_ecs}" \
+    -var="enable_app_runner=${TF_VAR_enable_app_runner}"
+}
+
 sync_state() {
   cd "$ROOT"
   bash "$SCRIPTS/bootstrap-import.sh"
@@ -24,13 +29,13 @@ sync_state() {
   cd "$TF_DIR"
 }
 
-plan_delete_addresses() {
+log_plan_summary() {
+  echo "[pre-apply] Resumen del plan:"
   terraform show -json pre-apply.plan | jq -r '
     [.resource_changes[]
-      | select([.change.actions[]] | any(. == "delete" or . == "destroy"))
-      | .address
-    ] | unique | .[]
-  ' 2>/dev/null || true
+      | {address, actions: .change.actions}
+    ] | .[] | "\(.address): \(.actions | join(","))"'
+  2>/dev/null || terraform show -no-color pre-apply.plan | grep -E '^(  # |  [~+-])' | head -40 || true
 }
 
 plan_has_forbidden_deletes() {
@@ -38,17 +43,6 @@ plan_has_forbidden_deletes() {
     [.resource_changes[]
       | select([.change.actions[]] | any(. == "delete" or . == "destroy"))
       | select(.address | test("apprunner|connector|aws_subnet\\.private_[ab]|aws_vpc\\.main"))
-    ] | length > 0
-  ' >/dev/null 2>&1
-}
-
-plan_has_drift_creates() {
-  terraform show -json pre-apply.plan | jq -e '
-    [.resource_changes[]
-      | select([.change.actions[]] | any(. == "create"))
-      | select(.address | test(
-          "aws_iam_role\\.ecs_|aws_lb_target_group\\.backend|aws_security_group\\.redis|aws_vpc\\.main"
-        ))
     ] | length > 0
   ' >/dev/null 2>&1
 }
@@ -65,82 +59,71 @@ plan_has_subnet_replace() {
   ' >/dev/null 2>&1
 }
 
-plan_modifies_redis_cluster() {
-  terraform show -json pre-apply.plan | jq -e '
-    [.resource_changes[]
-      | select(.address == "aws_elasticache_cluster.redis")
-      | select([.change.actions[]] | any(. == "update"))
-      | select(.change.after.security_group_ids != .change.before.security_group_ids)
-    ] | length > 0
-  ' >/dev/null 2>&1
-}
-
-checkpoint_state() {
-  local state="${TF_DIR}/terraform.tfstate"
-  if [ -f "$state" ]; then
-    cp "$state" "${TF_DIR}/terraform.tfstate.pre-apply-round-${1}"
-    echo "[pre-apply] Checkpoint state ronda ${1} (serial=$(jq -r '.serial' "$state"))"
-  fi
-}
-
 cd "$TF_DIR"
+echo "[pre-apply] enable_ecs=${TF_VAR_enable_ecs}"
 sync_state
-checkpoint_state "bootstrap"
 
-for round in $(seq 1 "$MAX_ROUNDS"); do
-  echo "[pre-apply] Ronda ${round}/${MAX_ROUNDS} (enable_ecs=${TF_VAR_enable_ecs})"
+set +e
+tf_plan
+ec=$?
+set -e
 
-  if [ "$round" -gt 1 ]; then
-    sync_state
-    checkpoint_state "$round"
-  fi
+if [ "$ec" -eq 124 ]; then
+  echo "::error::terraform plan excedió ${PLAN_TIMEOUT}s"
+  exit 1
+fi
 
+if [ "$ec" -eq 1 ]; then
+  echo "::error::terraform plan falló (exit 1)"
+  log_plan_summary
+  exit 1
+fi
+
+if plan_has_forbidden_deletes; then
+  echo "[pre-apply] Deletes prohibidos — purgando legacy App Runner del state..."
+  terraform state list 2>/dev/null | grep -iE 'apprunner|connector' | while read -r addr; do
+    [ -z "$addr" ] && continue
+    terraform state rm "$addr" || true
+  done
+  sync_state
   set +e
   tf_plan
   ec=$?
   set -e
+  [ "$ec" -eq 1 ] && exit 1
+fi
 
-  if [ "$ec" -eq 124 ]; then
-    echo "::error::terraform plan excedió ${PLAN_TIMEOUT}s"
+if plan_has_subnet_replace; then
+  echo "[pre-apply] Replace de subnets detectado — re-sync VPC ancla..."
+  sync_state
+  set +e
+  tf_plan
+  ec=$?
+  set -e
+  if plan_has_subnet_replace; then
+    echo "::error::El plan sigue queriendo reemplazar subnets (conflicto VPC)."
+    log_plan_summary
     exit 1
   fi
+fi
 
-  if [ "$ec" -eq 1 ]; then
-    if [ "$round" -lt "$MAX_ROUNDS" ]; then
-      echo "[pre-apply] Plan exit 1 — re-sync VPC/subnets e reintentar..."
-      continue
-    fi
-    echo "::error::terraform plan falló tras ${MAX_ROUNDS} rondas"
-    exit 1
-  fi
+echo "[pre-apply] Importando creates existentes en AWS..."
+bash "$SCRIPTS/import-plan-creates.sh" pre-apply.plan
 
-  if plan_has_forbidden_deletes; then
-    echo "[pre-apply] Deletes prohibidos — purgando legacy..."
-    plan_delete_addresses | while read -r addr; do
-      [ -z "$addr" ] && continue
-      case "$addr" in
-        *apprunner*|*connector*)
-          terraform state rm "$addr" || true
-          ;;
-      esac
-    done
-    continue
-  fi
+set +e
+tf_plan
+ec=$?
+set -e
 
-  if plan_has_drift_creates || plan_modifies_redis_cluster || plan_has_subnet_replace; then
-    echo "[pre-apply] Drift detectado — re-import en siguiente ronda..."
-    continue
-  fi
+if [ "$ec" -eq 1 ]; then
+  echo "::error::terraform plan falló tras import-plan-creates"
+  log_plan_summary
+  exit 1
+fi
 
-  bash "$SCRIPTS/guard-network-plan.sh" pre-apply.plan
+log_plan_summary
 
-  echo "[pre-apply] Apply (sin plan congelado)..."
-  terraform apply -input=false -auto-approve -parallelism=10 \
-    -var="enable_ecs=${TF_VAR_enable_ecs}" \
-    -var="enable_app_runner=${TF_VAR_enable_app_runner}"
-  exit 0
-done
+bash "$SCRIPTS/guard-network-plan.sh" pre-apply.plan
 
-echo "::error::Drift no resuelto tras ${MAX_ROUNDS} rondas"
-terraform show -no-color pre-apply.plan 2>/dev/null | head -80 || true
-exit 1
+echo "[pre-apply] Apply..."
+tf_apply
