@@ -68,15 +68,15 @@ resource "aws_security_group" "redis" {
 }
 
 resource "aws_security_group_rule" "redis_from_ecs" {
-  count = local.enable_compute && local.ecs_tasks_sg_id != null && local.redis_sg_id != null ? 1 : 0
+  count = local.enable_compute && local.ecs_sg_discovered != null && local.redis_sg_discovered != null ? 1 : 0
 
   type                     = "ingress"
   description              = "Redis desde ECS Fargate"
   from_port                = 6379
   to_port                  = 6379
   protocol                 = "tcp"
-  security_group_id        = local.redis_sg_id
-  source_security_group_id = local.ecs_tasks_sg_id
+  security_group_id        = local.redis_sg_discovered
+  source_security_group_id = local.ecs_sg_discovered
 }
 
 # --- ElastiCache Redis ---

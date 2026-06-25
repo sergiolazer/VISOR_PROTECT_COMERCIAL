@@ -26,12 +26,57 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/terraform-import-lib.sh"
 
 IMPORT_TIMEOUT="${TF_IMPORT_TIMEOUT_SEC:-180}"
 
+sg_live_vpc_id() {
+  local sg_id="$1"
+  [ -z "$sg_id" ] || [ "$sg_id" = "None" ] && return 0
+  aws ec2 describe-security-groups --group-ids "$sg_id" \
+    --query 'SecurityGroups[0].VpcId' --output text 2>/dev/null || echo ""
+}
+
+sg_in_anchor_vpc() {
+  local sg_id="$1"
+  local vpc
+  [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ] && return 1
+  [ -z "$sg_id" ] || [ "$sg_id" = "None" ] && return 1
+  vpc="$(sg_live_vpc_id "$sg_id")"
+  [ -n "$vpc" ] && [ "$vpc" != "None" ] && [ "$vpc" = "$VPC_ID" ]
+}
+
+sg_by_name_in_anchor() {
+  local group_name="$1"
+  [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ] && return 0
+  aws ec2 describe-security-groups \
+    --filters "Name=vpc-id,Values=${VPC_ID}" "Name=group-name,Values=${group_name}" \
+    --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo ""
+}
+
+purge_sg_from_state_if_wrong_vpc() {
+  local addr="$1"
+  local sg_id vpc
+
+  if ! terraform state show -no-color "$addr" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  sg_id="$(terraform state show -no-color "$addr" 2>/dev/null | awk '/^[[:space:]]*id[[:space:]]*=/ { print $3; exit }' | tr -d '"')"
+  vpc="$(sg_live_vpc_id "$sg_id")"
+  if [ -n "$sg_id" ] && [ -n "$vpc" ] && [ "$vpc" != "None" ] && [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ] && [ "$vpc" != "$VPC_ID" ]; then
+    echo "[import-plan-creates] $addr ($sg_id) en VPC $vpc != ancla $VPC_ID — state rm"
+    terraform state rm "$addr" 2>/dev/null || true
+  fi
+}
+
 import_if_planned_create() {
   local addr="$1"
   local aws_id="$2"
   local probe="${3:-}"
 
   [ -z "$aws_id" ] || [ "$aws_id" = "None" ] && return 0
+
+  if [[ "$addr" == aws_security_group* ]] && ! sg_in_anchor_vpc "$aws_id"; then
+    echo "[import-plan-creates] omitir $addr — SG $aws_id no está en VPC ancla ${VPC_ID:-?}"
+    return 0
+  fi
 
   if terraform state show -no-color "$addr" >/dev/null 2>&1; then
     echo "[import-plan-creates] ya en state: $addr"
@@ -93,23 +138,18 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
 fi
 if [ -z "$SG_REDIS" ] || [ "$SG_REDIS" = "None" ]; then
   SG_REDIS="$(aws elasticache describe-cache-clusters --cache-cluster-id "${PREFIX}-redis" --query 'CacheClusters[0].SecurityGroups[0].SecurityGroupId' --output text 2>/dev/null || echo "")"
+  if ! sg_in_anchor_vpc "$SG_REDIS"; then
+    echo "[import-plan-creates] SG Redis ElastiCache $SG_REDIS fuera de VPC ancla — omitir"
+    SG_REDIS=""
+  fi
 fi
 import_if_planned_create 'aws_security_group.redis' "$SG_REDIS" "aws ec2 describe-security-groups --group-ids $SG_REDIS"
 
-SG_ALB=""
-ALB_ARN_FOR_SG="$(aws elbv2 describe-load-balancers --query "LoadBalancers[?LoadBalancerName=='${PREFIX}-backend'].LoadBalancerArn | [0]" --output text 2>/dev/null || echo "")"
-if aws_value_ok "$ALB_ARN_FOR_SG"; then
-  SG_ALB="$(aws elbv2 describe-load-balancers --load-balancer-arns "$ALB_ARN_FOR_SG" --query 'LoadBalancers[0].SecurityGroups[0]' --output text 2>/dev/null || echo "")"
-fi
-if ! aws_value_ok "$SG_ALB" && [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
-  SG_ALB="$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=${VPC_ID}" "Name=group-name,Values=${PREFIX}-alb" --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")"
-fi
+# ALB SG: solo por nombre en VPC ancla (nunca el SG adjunto al ALB si está en otra VPC).
+SG_ALB="$(sg_by_name_in_anchor "${PREFIX}-alb")"
 import_if_planned_create 'aws_security_group.alb[0]' "$SG_ALB" "aws ec2 describe-security-groups --group-ids $SG_ALB"
 
-SG_ECS=""
-if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
-  SG_ECS="$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=${VPC_ID}" "Name=group-name,Values=${PREFIX}-ecs" --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")"
-fi
+SG_ECS="$(sg_by_name_in_anchor "${PREFIX}-ecs")"
 import_if_planned_create 'aws_security_group.ecs_tasks[0]' "$SG_ECS" "aws ec2 describe-security-groups --group-ids $SG_ECS"
 
 import_if_planned_create \
@@ -171,6 +211,12 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
     subnet_id="$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=${VPC_ID}" "Name=cidr-block,Values=${cidr}" --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")"
     import_if_planned_create "$addr" "$subnet_id" "aws ec2 describe-subnets --subnet-ids $subnet_id"
   done
+fi
+
+if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
+  purge_sg_from_state_if_wrong_vpc 'aws_security_group.alb[0]'
+  purge_sg_from_state_if_wrong_vpc 'aws_security_group.ecs_tasks[0]'
+  purge_sg_from_state_if_wrong_vpc 'aws_security_group.redis'
 fi
 
 echo "[import-plan-creates] Completado"

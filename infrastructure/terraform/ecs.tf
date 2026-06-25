@@ -90,8 +90,8 @@ resource "aws_security_group_rule" "ecs_tasks_from_alb" {
   from_port                = 3001
   to_port                  = 3001
   protocol                 = "tcp"
-  security_group_id        = local.ecs_tasks_sg_id
-  source_security_group_id = local.alb_sg_id
+  security_group_id        = local.ecs_sg_discovered
+  source_security_group_id = local.alb_sg_discovered
 }
 
 resource "aws_lb" "backend" {

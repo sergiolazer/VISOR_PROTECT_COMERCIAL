@@ -262,6 +262,14 @@ reconcile_sg_for_vpc() {
   if aws_value_ok "$target_sg"; then
     reconcile_resource_id "$addr" "$target_sg"
   else
+    if in_state "$addr"; then
+      state_sg="$(state_resource_id "$addr")"
+      state_vpc="$(sg_vpc_id "$state_sg")"
+      if [ -n "$state_sg" ] && [ -n "$state_vpc" ] && [ "$state_vpc" != "None" ] && [ "$state_vpc" != "$VPC_ID" ]; then
+        echo "[bootstrap-import] $addr ($state_sg) fuera de VPC ancla — state rm"
+        terraform state rm "$addr" 2>/dev/null || true
+      fi
+    fi
     echo "[bootstrap-import] Sin SG $group_name en VPC ancla — create pendiente para $addr"
   fi
 }

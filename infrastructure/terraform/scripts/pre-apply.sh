@@ -148,6 +148,7 @@ fi
 
 echo "[pre-apply] Importando creates existentes en AWS..."
 bash "$SCRIPTS/import-plan-creates.sh" pre-apply.plan
+bash "$SCRIPTS/reconcile-state.sh"
 
 for round in 1 2; do
   set +e
