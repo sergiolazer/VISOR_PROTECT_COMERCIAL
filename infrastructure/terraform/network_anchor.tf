@@ -1,5 +1,5 @@
 # VPC ancla y Security Groups resueltos por tags dentro de esa VPC.
-# Evita reglas cross-VPC cuando el state apunta a SGs huérfanos de applies fallidos.
+# Nunca usar un SG gestionado en el state si su vpc_id != VPC ancla (evita InvalidGroup.NotFound).
 
 data "aws_vpc" "anchor" {
   filter {
@@ -57,20 +57,33 @@ data "aws_security_groups" "redis_in_anchor" {
 }
 
 locals {
-  # Preferir SG descubierto en VPC ancla; si aún no existe en AWS, usar el recurso gestionado (create).
-  alb_sg_id = local.enable_compute ? (
-    length(data.aws_security_groups.alb_in_anchor[0].ids) > 0
-    ? data.aws_security_groups.alb_in_anchor[0].ids[0]
-    : aws_security_group.alb[0].id
+  alb_sg_discovered = local.enable_compute && length(data.aws_security_groups.alb_in_anchor[0].ids) > 0 ? (
+    data.aws_security_groups.alb_in_anchor[0].ids[0]
   ) : null
 
-  ecs_tasks_sg_id = local.enable_compute ? (
-    length(data.aws_security_groups.ecs_tasks_in_anchor[0].ids) > 0
-    ? data.aws_security_groups.ecs_tasks_in_anchor[0].ids[0]
-    : aws_security_group.ecs_tasks[0].id
+  ecs_sg_discovered = local.enable_compute && length(data.aws_security_groups.ecs_tasks_in_anchor[0].ids) > 0 ? (
+    data.aws_security_groups.ecs_tasks_in_anchor[0].ids[0]
+  ) : null
+
+  # Solo confiar en el recurso gestionado si Terraform reporta vpc_id == ancla (nunca SG huérfano en state).
+  managed_alb_sg_in_anchor = local.enable_compute && aws_security_group.alb[0].vpc_id == local.anchor_vpc_id
+  managed_ecs_sg_in_anchor = local.enable_compute && aws_security_group.ecs_tasks[0].vpc_id == local.anchor_vpc_id
+
+  alb_sg_id = local.enable_compute ? coalesce(
+    local.alb_sg_discovered,
+    local.managed_alb_sg_in_anchor ? aws_security_group.alb[0].id : null
+  ) : null
+
+  ecs_tasks_sg_id = local.enable_compute ? coalesce(
+    local.ecs_sg_discovered,
+    local.managed_ecs_sg_in_anchor ? aws_security_group.ecs_tasks[0].id : null
   ) : null
 
   redis_sg_id = length(data.aws_security_groups.redis_in_anchor.ids) > 0 ? (
     data.aws_security_groups.redis_in_anchor.ids[0]
-  ) : aws_security_group.redis.id
+  ) : (
+    aws_security_group.redis.vpc_id == local.anchor_vpc_id ? aws_security_group.redis.id : null
+  )
+
+  ecs_alb_rule_ready = local.enable_compute && local.alb_sg_id != null && local.ecs_tasks_sg_id != null
 }

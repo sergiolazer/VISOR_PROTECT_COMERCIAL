@@ -83,7 +83,7 @@ resource "aws_security_group" "ecs_tasks" {
 }
 
 resource "aws_security_group_rule" "ecs_tasks_from_alb" {
-  count = local.enable_compute ? 1 : 0
+  count = local.ecs_alb_rule_ready ? 1 : 0
 
   type                     = "ingress"
   description              = "Backend from ALB"
@@ -92,13 +92,6 @@ resource "aws_security_group_rule" "ecs_tasks_from_alb" {
   protocol                 = "tcp"
   security_group_id        = local.ecs_tasks_sg_id
   source_security_group_id = local.alb_sg_id
-
-  lifecycle {
-    precondition {
-      condition     = local.ecs_tasks_sg_id != null && local.alb_sg_id != null
-      error_message = "Security Groups ALB/ECS no resueltos en VPC ancla ${local.anchor_vpc_id}."
-    }
-  }
 }
 
 resource "aws_lb" "backend" {

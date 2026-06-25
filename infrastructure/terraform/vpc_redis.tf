@@ -68,7 +68,7 @@ resource "aws_security_group" "redis" {
 }
 
 resource "aws_security_group_rule" "redis_from_ecs" {
-  count = local.enable_compute ? 1 : 0
+  count = local.enable_compute && local.ecs_tasks_sg_id != null && local.redis_sg_id != null ? 1 : 0
 
   type                     = "ingress"
   description              = "Redis desde ECS Fargate"
@@ -77,13 +77,6 @@ resource "aws_security_group_rule" "redis_from_ecs" {
   protocol                 = "tcp"
   security_group_id        = local.redis_sg_id
   source_security_group_id = local.ecs_tasks_sg_id
-
-  lifecycle {
-    precondition {
-      condition     = local.ecs_tasks_sg_id != null
-      error_message = "SG ECS no resuelto en VPC ancla ${local.anchor_vpc_id} para regla Redis."
-    }
-  }
 }
 
 # --- ElastiCache Redis ---

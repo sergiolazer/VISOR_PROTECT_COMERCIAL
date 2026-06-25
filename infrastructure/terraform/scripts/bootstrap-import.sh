@@ -239,6 +239,12 @@ reconcile_sg_for_vpc() {
     if [ -n "$state_sg" ] && [ -n "$state_vpc" ] && [ "$state_vpc" != "None" ] && [ "$state_vpc" != "$VPC_ID" ]; then
       echo "[bootstrap-import] $addr en VPC $state_vpc != ancla $VPC_ID — state rm sin destroy"
       terraform state rm "$addr" 2>/dev/null || true
+      case "$addr" in
+        'aws_security_group.alb[0]'|'aws_security_group.ecs_tasks[0]')
+          terraform state rm 'aws_security_group_rule.ecs_tasks_from_alb[0]' 2>/dev/null || true
+          terraform state rm 'aws_security_group_rule.redis_from_ecs[0]' 2>/dev/null || true
+          ;;
+      esac
     elif aws_value_ok "$target_sg" && [ "$state_sg" != "$target_sg" ]; then
       echo "[bootstrap-import] $addr id state ($state_sg) != SG ancla ($target_sg)"
       terraform state rm "$addr" 2>/dev/null || true

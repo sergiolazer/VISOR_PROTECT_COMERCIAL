@@ -13,6 +13,7 @@ PREFIX="${PROJECT}-${ENV}"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/aws-probe.sh"
 
 KNOWN_ORPHAN_SG="sg-0dbb342ef24119cb9"
+KNOWN_ORPHAN_ECS_SG="sg-02e436ef49a397c21"
 KNOWN_PRIVATE_SUBNET="subnet-0f19bd9d7914446de"
 
 echo "[reconcile-state] Estabilizando recursos de red y Redis..."
@@ -96,6 +97,76 @@ prune_state_by_aws_id() {
   done < <(terraform state list 2>/dev/null || true)
 }
 
+discover_anchor_vpc_id() {
+  local cache_subnet subnet_id vpc_id
+
+  cache_subnet="$(aws elasticache describe-cache-clusters \
+    --cache-cluster-id "${PREFIX}-redis" \
+    --query 'CacheClusters[0].CacheSubnetGroupName' --output text 2>/dev/null || echo "")"
+
+  if [ -n "$cache_subnet" ] && [ "$cache_subnet" != "None" ]; then
+    subnet_id="$(aws elasticache describe-cache-subnet-groups \
+      --cache-subnet-group-name "$cache_subnet" \
+      --query 'CacheSubnetGroups[0].Subnets[0].SubnetIdentifier' --output text 2>/dev/null || echo "")"
+    if [ -n "$subnet_id" ] && [ "$subnet_id" != "None" ]; then
+      vpc_id="$(aws ec2 describe-subnets --subnet-ids "$subnet_id" \
+        --query 'Subnets[0].VpcId' --output text 2>/dev/null || echo "")"
+      if [ -n "$vpc_id" ] && [ "$vpc_id" != "None" ]; then
+        echo "$vpc_id"
+        return 0
+      fi
+    fi
+  fi
+
+  vpc_id="$(aws ec2 describe-vpcs \
+    --filters "Name=tag:Name,Values=${PREFIX}-vpc" \
+    --query 'Vpcs[0].VpcId' --output text 2>/dev/null || echo "")"
+  echo "$vpc_id"
+}
+
+sg_live_vpc_id() {
+  local sg_id="$1"
+  [ -z "$sg_id" ] || [ "$sg_id" = "None" ] && return 0
+  aws ec2 describe-security-groups --group-ids "$sg_id" \
+    --query 'SecurityGroups[0].VpcId' --output text 2>/dev/null || echo ""
+}
+
+purge_sg_rules_for_compute() {
+  local rule_addr
+  for rule_addr in \
+    'aws_security_group_rule.ecs_tasks_from_alb[0]' \
+    'aws_security_group_rule.redis_from_ecs[0]'; do
+    if terraform state show -no-color "$rule_addr" >/dev/null 2>&1; then
+      echo "  state rm $rule_addr (recrear tras alinear SGs)"
+      terraform state rm "$rule_addr" || true
+    fi
+  done
+}
+
+purge_compute_sgs_not_in_anchor() {
+  local anchor="$1"
+  local addr sg vpc purged=0
+
+  [ -z "$anchor" ] || [ "$anchor" = "None" ] && return 0
+
+  for addr in 'aws_security_group.alb[0]' 'aws_security_group.ecs_tasks[0]'; do
+    if ! terraform state show -no-color "$addr" >/dev/null 2>&1; then
+      continue
+    fi
+    sg="$(state_id "$addr")"
+    vpc="$(sg_live_vpc_id "$sg")"
+    if [ -n "$sg" ] && [ -n "$vpc" ] && [ "$vpc" != "None" ] && [ "$vpc" != "$anchor" ]; then
+      echo "[reconcile-state] $addr ($sg) en VPC $vpc != ancla $anchor — state rm"
+      terraform state rm "$addr" || true
+      purged=1
+    fi
+  done
+
+  if [ "$purged" -eq 1 ]; then
+    purge_sg_rules_for_compute
+  fi
+}
+
 STABLE=(
   aws_vpc.main
   aws_subnet.private_a
@@ -154,6 +225,15 @@ for addr in "${LEGACY[@]}"; do
 done
 
 prune_state_by_aws_id "$KNOWN_ORPHAN_SG"
+prune_state_by_aws_id "$KNOWN_ORPHAN_ECS_SG"
+
+ANCHOR_VPC="$(discover_anchor_vpc_id)"
+if [ -n "$ANCHOR_VPC" ] && [ "$ANCHOR_VPC" != "None" ]; then
+  echo "[reconcile-state] VPC ancla: $ANCHOR_VPC"
+  purge_compute_sgs_not_in_anchor "$ANCHOR_VPC"
+else
+  echo "[reconcile-state] Sin VPC ancla — omitiendo purga SG compute"
+fi
 
 while IFS= read -r addr; do
   [ -z "$addr" ] && continue
