@@ -28,9 +28,18 @@ data "aws_elasticache_subnet_group" "anchor" {
   name  = "${var.name_prefix}-redis"
 }
 
-data "aws_subnet" "anchor_probe" {
+data "aws_subnets" "anchor_from_redis" {
   count = var.discover_existing ? 1 : 0
-  id    = tolist(data.aws_elasticache_subnet_group.anchor[0].subnet_ids)[0]
+
+  filter {
+    name   = "subnet-id"
+    values = data.aws_elasticache_subnet_group.anchor[0].subnet_ids
+  }
+}
+
+data "aws_subnet" "anchor_probe" {
+  count = var.discover_existing && length(data.aws_subnets.anchor_from_redis[0].ids) > 0 ? 1 : 0
+  id    = sort(data.aws_subnets.anchor_from_redis[0].ids)[0]
 }
 
 # Subnets por CIDR en la VPC ancla (no requiere tag Tier).

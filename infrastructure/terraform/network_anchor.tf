@@ -1,16 +1,29 @@
 # VPC ancla y Security Groups dentro de esa VPC.
-# La VPC ancla se deriva del subnet group ElastiCache Redis (único).
+# La VPC ancla se deriva de subnets Redis que existen en AWS (el subnet group puede
+# listar IDs obsoletos; aws_subnets filtra solo los válidos).
 
 data "aws_elasticache_subnet_group" "anchor" {
   name = "${local.name_prefix}-redis"
 }
 
+data "aws_subnets" "anchor_from_redis" {
+  filter {
+    name   = "subnet-id"
+    values = data.aws_elasticache_subnet_group.anchor.subnet_ids
+  }
+}
+
 data "aws_subnet" "anchor_probe" {
-  id = tolist(data.aws_elasticache_subnet_group.anchor.subnet_ids)[0]
+  count = length(data.aws_subnets.anchor_from_redis.ids) > 0 ? 1 : 0
+  id    = sort(data.aws_subnets.anchor_from_redis.ids)[0]
 }
 
 locals {
-  anchor_vpc_id = data.aws_subnet.anchor_probe.vpc_id
+  anchor_vpc_id = coalesce(
+    length(data.aws_subnet.anchor_probe) > 0 ? data.aws_subnet.anchor_probe[0].vpc_id : null,
+    try(aws_subnet.private_a.vpc_id, null),
+    try(aws_vpc.main.id, null)
+  )
 
   sg_name_alb       = "${local.name_prefix}-alb"
   sg_name_ecs_tasks = "${local.name_prefix}-ecs"
@@ -58,7 +71,6 @@ data "aws_security_groups" "redis_in_anchor" {
 }
 
 locals {
-  # IDs verificados en VPC ancla (única fuente para reglas cross-SG).
   alb_sg_discovered = local.enable_compute && length(data.aws_security_groups.alb_in_anchor[0].ids) > 0 ? (
     data.aws_security_groups.alb_in_anchor[0].ids[0]
   ) : null
@@ -71,7 +83,6 @@ locals {
     data.aws_security_groups.redis_in_anchor.ids[0]
   ) : null
 
-  # ALB/ECS service: descubierto en ancla, o recurso gestionado en create (sin regla cross-SG hasta el próximo plan).
   alb_sg_id = local.enable_compute ? coalesce(
     local.alb_sg_discovered,
     try(aws_security_group.alb[0].id, null)
@@ -87,6 +98,5 @@ locals {
     try(aws_security_group.redis.id, null)
   )
 
-  # Regla ALB→ECS solo con ambos SG confirmados en VPC ancla vía data source.
   ecs_alb_rule_ready = local.enable_compute && local.alb_sg_discovered != null && local.ecs_sg_discovered != null
 }
