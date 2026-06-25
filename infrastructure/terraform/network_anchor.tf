@@ -1,15 +1,17 @@
-# VPC ancla y Security Groups resueltos por tags dentro de esa VPC.
-# Nunca usar un SG gestionado en el state si su vpc_id != VPC ancla (evita InvalidGroup.NotFound).
+# VPC ancla y Security Groups dentro de esa VPC.
+# La VPC ancla se deriva del subnet group ElastiCache Redis (único); NO usar tag:Name
+# porque existen 2 VPCs con el mismo nombre (ancla + huérfana).
 
-data "aws_vpc" "anchor" {
-  filter {
-    name   = "tag:Name"
-    values = ["${local.name_prefix}-vpc"]
-  }
+data "aws_elasticache_subnet_group" "anchor" {
+  name = "${local.name_prefix}-redis"
+}
+
+data "aws_subnet" "anchor_probe" {
+  id = tolist(data.aws_elasticache_subnet_group.anchor.subnet_ids)[0]
 }
 
 locals {
-  anchor_vpc_id = data.aws_vpc.anchor.id
+  anchor_vpc_id = data.aws_subnet.anchor_probe.vpc_id
 
   sg_name_alb       = "${local.name_prefix}-alb"
   sg_name_ecs_tasks = "${local.name_prefix}-ecs"
@@ -65,7 +67,6 @@ locals {
     data.aws_security_groups.ecs_tasks_in_anchor[0].ids[0]
   ) : null
 
-  # Solo confiar en el recurso gestionado si Terraform reporta vpc_id == ancla (nunca SG huérfano en state).
   managed_alb_sg_in_anchor = local.enable_compute && aws_security_group.alb[0].vpc_id == local.anchor_vpc_id
   managed_ecs_sg_in_anchor = local.enable_compute && aws_security_group.ecs_tasks[0].vpc_id == local.anchor_vpc_id
 

@@ -20,15 +20,17 @@ variable "enable_public_nat" {
   default     = true
 }
 
-# --- Descubrimiento por tags (modo migración) ---
+# --- Descubrimiento por subnet group Redis (modo migración) ---
+# No usar solo tag:Name — hay VPCs duplicadas con el mismo nombre.
 
-data "aws_vpc" "discovered" {
+data "aws_elasticache_subnet_group" "anchor" {
   count = var.discover_existing ? 1 : 0
+  name  = "${var.name_prefix}-redis"
+}
 
-  filter {
-    name   = "tag:Name"
-    values = [var.vpc_name_tag]
-  }
+data "aws_subnet" "anchor_probe" {
+  count = var.discover_existing ? 1 : 0
+  id    = tolist(data.aws_elasticache_subnet_group.anchor[0].subnet_ids)[0]
 }
 
 # Subnets por CIDR en la VPC ancla (no requiere tag Tier).
@@ -37,7 +39,7 @@ data "aws_subnet" "private_by_cidr" {
 
   filter {
     name   = "vpc-id"
-    values = [data.aws_vpc.discovered[0].id]
+    values = [data.aws_subnet.anchor_probe[0].vpc_id]
   }
 
   filter {
@@ -51,7 +53,7 @@ data "aws_subnet" "public_by_cidr" {
 
   filter {
     name   = "vpc-id"
-    values = [data.aws_vpc.discovered[0].id]
+    values = [data.aws_subnet.anchor_probe[0].vpc_id]
   }
 
   filter {
@@ -76,7 +78,7 @@ resource "aws_vpc" "created" {
 }
 
 locals {
-  vpc_id = var.discover_existing ? data.aws_vpc.discovered[0].id : aws_vpc.created[0].id
+  vpc_id = var.discover_existing ? data.aws_subnet.anchor_probe[0].vpc_id : aws_vpc.created[0].id
 
   private_subnet_ids = var.discover_existing ? [
     for cidr in var.private_subnet_cidrs : data.aws_subnet.private_by_cidr[cidr].id

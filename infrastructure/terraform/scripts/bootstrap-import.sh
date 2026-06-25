@@ -233,6 +233,14 @@ reconcile_sg_for_vpc() {
 
   target_sg="$(discover_sg_in_vpc "$group_name")"
 
+  if aws_value_ok "$target_sg"; then
+    target_vpc="$(sg_vpc_id "$target_sg")"
+    if [ -n "$target_vpc" ] && [ "$target_vpc" != "None" ] && [ "$target_vpc" != "$VPC_ID" ]; then
+      echo "[bootstrap-import] SG $target_sg ($group_name) en VPC $target_vpc != ancla $VPC_ID — omitir"
+      target_sg=""
+    fi
+  fi
+
   if in_state "$addr"; then
     state_sg="$(state_resource_id "$addr")"
     state_vpc="$(sg_vpc_id "$state_sg")"
@@ -552,9 +560,14 @@ assert_in_state_if_exists \
   "${PREFIX}-redis"
 
 if [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ]; then
-  SG_REDIS_ASSERT="$(discover_redis_security_group)"
-  if [ -z "$SG_REDIS_ASSERT" ] || [ "$SG_REDIS_ASSERT" = "None" ]; then
-    SG_REDIS_ASSERT="$(discover_sg_in_vpc "${PREFIX}-redis")"
+  SG_REDIS_ASSERT="$(discover_sg_in_vpc "${PREFIX}-redis")"
+  if ! aws_value_ok "$SG_REDIS_ASSERT"; then
+    SG_REDIS_ASSERT="$(discover_redis_security_group)"
+    redis_vpc="$(sg_vpc_id "$SG_REDIS_ASSERT")"
+    if [ -n "$redis_vpc" ] && [ "$redis_vpc" != "None" ] && [ "$redis_vpc" != "$VPC_ID" ]; then
+      echo "[bootstrap-import] SG Redis ElastiCache $SG_REDIS_ASSERT en VPC $redis_vpc != ancla — omitir"
+      SG_REDIS_ASSERT=""
+    fi
   fi
   if aws_value_ok "$SG_REDIS_ASSERT"; then
     assert_in_state_if_exists \

@@ -87,9 +87,12 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   import_if_planned_create 'aws_vpc.main' "$VPC_ID" "aws ec2 describe-vpcs --vpc-ids $VPC_ID"
 fi
 
-SG_REDIS="$(aws elasticache describe-cache-clusters --cache-cluster-id "${PREFIX}-redis" --query 'CacheClusters[0].SecurityGroups[0].SecurityGroupId' --output text 2>/dev/null || echo "")"
-if [ -z "$SG_REDIS" ] || [ "$SG_REDIS" = "None" ]; then
+SG_REDIS=""
+if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   SG_REDIS="$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=${VPC_ID}" "Name=group-name,Values=${PREFIX}-redis" --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")"
+fi
+if [ -z "$SG_REDIS" ] || [ "$SG_REDIS" = "None" ]; then
+  SG_REDIS="$(aws elasticache describe-cache-clusters --cache-cluster-id "${PREFIX}-redis" --query 'CacheClusters[0].SecurityGroups[0].SecurityGroupId' --output text 2>/dev/null || echo "")"
 fi
 import_if_planned_create 'aws_security_group.redis' "$SG_REDIS" "aws ec2 describe-security-groups --group-ids $SG_REDIS"
 
