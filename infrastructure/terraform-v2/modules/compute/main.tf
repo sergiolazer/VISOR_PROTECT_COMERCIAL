@@ -22,7 +22,50 @@ variable "task_role_arn" { type = string }
 variable "ecs_cpu" { type = string }
 variable "ecs_memory" { type = string }
 variable "ecs_desired_count" { type = number }
+variable "discover_existing_network" {
+  type        = bool
+  default     = false
+  description = "true = resolver SG compute por tags en vpc_id (migración)"
+}
 variable "tags" { type = map(string) }
+
+data "aws_security_groups" "alb_in_vpc" {
+  count = var.discover_existing_network ? 1 : 0
+
+  filter {
+    name   = "vpc-id"
+    values = [var.vpc_id]
+  }
+
+  filter {
+    name   = "group-name"
+    values = ["${var.name_prefix}-alb"]
+  }
+}
+
+data "aws_security_groups" "ecs_tasks_in_vpc" {
+  count = var.discover_existing_network ? 1 : 0
+
+  filter {
+    name   = "vpc-id"
+    values = [var.vpc_id]
+  }
+
+  filter {
+    name   = "group-name"
+    values = ["${var.name_prefix}-ecs"]
+  }
+}
+
+locals {
+  alb_sg_id = var.discover_existing_network && length(data.aws_security_groups.alb_in_vpc[0].ids) > 0 ? (
+    data.aws_security_groups.alb_in_vpc[0].ids[0]
+  ) : aws_security_group.alb.id
+
+  ecs_tasks_sg_id = var.discover_existing_network && length(data.aws_security_groups.ecs_tasks_in_vpc[0].ids) > 0 ? (
+    data.aws_security_groups.ecs_tasks_in_vpc[0].ids[0]
+  ) : aws_security_group.ecs_tasks.id
+}
 
 resource "aws_security_group" "alb" {
   name        = "${var.name_prefix}-alb"
@@ -50,20 +93,16 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(var.tags, { Component = "compute" })
+  tags = merge(var.tags, {
+    Name      = "${var.name_prefix}-alb"
+    Component = "compute"
+  })
 }
 
 resource "aws_security_group" "ecs_tasks" {
   name        = "${var.name_prefix}-ecs"
   description = "ECS Fargate tasks"
   vpc_id      = var.vpc_id
-
-  ingress {
-    from_port       = 3001
-    to_port         = 3001
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
-  }
 
   egress {
     from_port   = 0
@@ -72,14 +111,34 @@ resource "aws_security_group" "ecs_tasks" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(var.tags, { Component = "compute" })
+  tags = merge(var.tags, {
+    Name      = "${var.name_prefix}-ecs"
+    Component = "compute"
+  })
+}
+
+resource "aws_security_group_rule" "ecs_tasks_from_alb" {
+  type                     = "ingress"
+  description              = "Backend from ALB"
+  from_port                = 3001
+  to_port                  = 3001
+  protocol                 = "tcp"
+  security_group_id        = local.ecs_tasks_sg_id
+  source_security_group_id = local.alb_sg_id
+
+  lifecycle {
+    precondition {
+      condition     = local.ecs_tasks_sg_id != null && local.alb_sg_id != null
+      error_message = "Security Groups ALB/ECS no resueltos en VPC ${var.vpc_id}."
+    }
+  }
 }
 
 resource "aws_lb" "backend" {
   name               = "${var.name_prefix}-backend"
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
+  security_groups    = [local.alb_sg_id]
   subnets            = var.public_subnet_ids
 
   tags = merge(var.tags, {
@@ -180,7 +239,7 @@ resource "aws_ecs_service" "backend" {
 
   network_configuration {
     subnets          = var.private_subnet_ids
-    security_groups  = [aws_security_group.ecs_tasks.id]
+    security_groups  = [local.ecs_tasks_sg_id]
     assign_public_ip = false
   }
 
@@ -217,5 +276,5 @@ output "ecs_service_name" {
 }
 
 output "ecs_tasks_security_group_id" {
-  value = aws_security_group.ecs_tasks.id
+  value = local.ecs_tasks_sg_id
 }

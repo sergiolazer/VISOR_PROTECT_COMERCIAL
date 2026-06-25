@@ -10,9 +10,36 @@ variable "redis_node_type" { type = string }
 variable "ecs_tasks_security_group_id" {
   type        = string
   default     = null
-  description = "SG de tareas ECS; null durante import inicial"
+  description = "SG ECS explícito; si null, se descubre por nombre en vpc_id cuando enable_ecs_ingress=true"
+}
+variable "enable_ecs_ingress" {
+  type        = bool
+  default     = false
+  description = "Crea regla Redis←ECS resolviendo SG ECS por tags en la VPC"
 }
 variable "tags" { type = map(string) }
+
+data "aws_security_groups" "ecs_tasks_in_vpc" {
+  count = var.enable_ecs_ingress && var.ecs_tasks_security_group_id == null ? 1 : 0
+
+  filter {
+    name   = "vpc-id"
+    values = [var.vpc_id]
+  }
+
+  filter {
+    name   = "group-name"
+    values = ["${var.name_prefix}-ecs"]
+  }
+}
+
+locals {
+  ecs_tasks_sg_id = var.ecs_tasks_security_group_id != null ? var.ecs_tasks_security_group_id : (
+    var.enable_ecs_ingress && try(length(data.aws_security_groups.ecs_tasks_in_vpc[0].ids), 0) > 0
+    ? data.aws_security_groups.ecs_tasks_in_vpc[0].ids[0]
+    : null
+  )
+}
 
 resource "aws_security_group" "redis" {
   name        = "${var.name_prefix}-redis"
@@ -39,7 +66,7 @@ resource "aws_security_group" "redis" {
 }
 
 resource "aws_security_group_rule" "redis_from_ecs" {
-  count = var.ecs_tasks_security_group_id != null ? 1 : 0
+  count = local.ecs_tasks_sg_id != null ? 1 : 0
 
   type                     = "ingress"
   description              = "Redis desde ECS Fargate"
@@ -47,7 +74,7 @@ resource "aws_security_group_rule" "redis_from_ecs" {
   to_port                  = 6379
   protocol                 = "tcp"
   security_group_id        = aws_security_group.redis.id
-  source_security_group_id = var.ecs_tasks_security_group_id
+  source_security_group_id = local.ecs_tasks_sg_id
 }
 
 resource "aws_elasticache_subnet_group" "redis" {

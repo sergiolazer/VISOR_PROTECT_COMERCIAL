@@ -21,9 +21,9 @@ resource "aws_cloudwatch_log_group" "ecs" {
 resource "aws_security_group" "alb" {
   count = local.enable_compute ? 1 : 0
 
-  name        = "${local.name_prefix}-alb"
+  name        = local.sg_name_alb
   description = "ALB ingress HTTP/HTTPS"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.anchor_vpc_id
 
   ingress {
     description = "HTTP"
@@ -48,17 +48,22 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  tags = {
+    Name      = local.sg_name_alb
+    Component = "compute"
+  }
+
   lifecycle {
-    ignore_changes = [name, description, ingress, egress, vpc_id]
+    ignore_changes = [name, description, ingress, egress, vpc_id, tags, tags_all]
   }
 }
 
 resource "aws_security_group" "ecs_tasks" {
   count = local.enable_compute ? 1 : 0
 
-  name        = "${local.name_prefix}-ecs"
+  name        = local.sg_name_ecs_tasks
   description = "ECS Fargate tasks"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.anchor_vpc_id
 
   egress {
     from_port   = 0
@@ -67,8 +72,13 @@ resource "aws_security_group" "ecs_tasks" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  tags = {
+    Name      = local.sg_name_ecs_tasks
+    Component = "compute"
+  }
+
   lifecycle {
-    ignore_changes = [name, description, egress, vpc_id]
+    ignore_changes = [name, description, egress, vpc_id, tags, tags_all]
   }
 }
 
@@ -80,8 +90,15 @@ resource "aws_security_group_rule" "ecs_tasks_from_alb" {
   from_port                = 3001
   to_port                  = 3001
   protocol                 = "tcp"
-  security_group_id        = aws_security_group.ecs_tasks[0].id
-  source_security_group_id = aws_security_group.alb[0].id
+  security_group_id        = local.ecs_tasks_sg_id
+  source_security_group_id = local.alb_sg_id
+
+  lifecycle {
+    precondition {
+      condition     = local.ecs_tasks_sg_id != null && local.alb_sg_id != null
+      error_message = "Security Groups ALB/ECS no resueltos en VPC ancla ${local.anchor_vpc_id}."
+    }
+  }
 }
 
 resource "aws_lb" "backend" {
@@ -90,7 +107,7 @@ resource "aws_lb" "backend" {
   name               = "${local.name_prefix}-backend"
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb[0].id]
+  security_groups    = [local.alb_sg_id]
   subnets            = [aws_subnet.public_a[0].id, aws_subnet.public_b[0].id]
 
   tags = {
@@ -108,7 +125,7 @@ resource "aws_lb_target_group" "backend" {
   name        = "${local.name_prefix}-backend"
   port        = 3001
   protocol    = "HTTP"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.anchor_vpc_id
   target_type = "ip"
 
   health_check {
@@ -316,7 +333,7 @@ resource "aws_ecs_service" "backend" {
 
   network_configuration {
     subnets          = [aws_subnet.private_a.id, aws_subnet.private_b.id]
-    security_groups  = [aws_security_group.ecs_tasks[0].id]
+    security_groups  = [local.ecs_tasks_sg_id]
     assign_public_ip = false
   }
 

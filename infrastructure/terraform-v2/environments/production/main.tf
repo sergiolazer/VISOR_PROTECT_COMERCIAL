@@ -46,7 +46,8 @@ module "database" {
   vpc_id                      = module.network.vpc_id
   private_subnet_ids          = module.network.private_subnet_ids
   redis_node_type             = var.redis_node_type
-  ecs_tasks_security_group_id = null # regla ingress se añade tras compute (ver MIGRATION.md)
+  ecs_tasks_security_group_id = null
+  enable_ecs_ingress          = var.enable_ecs
   tags                        = local.default_tags
 
   depends_on = [module.network]
@@ -71,8 +72,9 @@ module "compute" {
   task_role_arn        = module.security.ecs_task_role_arn
   ecs_cpu              = var.ecs_cpu
   ecs_memory           = var.ecs_memory
-  ecs_desired_count    = var.ecs_desired_count
-  tags                 = local.default_tags
+  ecs_desired_count         = var.ecs_desired_count
+  discover_existing_network = var.discover_existing_network
+  tags                      = local.default_tags
 
   depends_on = [module.database, module.security, module.storage]
 }

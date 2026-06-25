@@ -45,9 +45,9 @@ resource "aws_subnet" "private_b" {
 }
 
 resource "aws_security_group" "redis" {
-  name        = "${local.name_prefix}-redis"
+  name        = local.sg_name_redis
   description = "Redis ElastiCache"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.anchor_vpc_id
 
   egress {
     from_port   = 0
@@ -56,9 +56,14 @@ resource "aws_security_group" "redis" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  tags = {
+    Name      = local.sg_name_redis
+    Component = "database"
+  }
+
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [description, name, name_prefix, vpc_id, egress]
+    ignore_changes  = [description, name, name_prefix, vpc_id, egress, tags, tags_all]
   }
 }
 
@@ -70,8 +75,15 @@ resource "aws_security_group_rule" "redis_from_ecs" {
   from_port                = 6379
   to_port                  = 6379
   protocol                 = "tcp"
-  security_group_id        = aws_security_group.redis.id
-  source_security_group_id = aws_security_group.ecs_tasks[0].id
+  security_group_id        = local.redis_sg_id
+  source_security_group_id = local.ecs_tasks_sg_id
+
+  lifecycle {
+    precondition {
+      condition     = local.ecs_tasks_sg_id != null
+      error_message = "SG ECS no resuelto en VPC ancla ${local.anchor_vpc_id} para regla Redis."
+    }
+  }
 }
 
 # --- ElastiCache Redis ---
