@@ -11,6 +11,7 @@ PLAN_FILE="$(basename "${1:-pre-apply.plan}")"
 PROJECT="${TF_VAR_project_name:-visor-protect}"
 ENV="${TF_VAR_environment:-production}"
 PREFIX="${PROJECT}-${ENV}"
+KNOWN_ORPHAN_ALB_SG="sg-04402f38fc4401001"
 
 # shellcheck source=vpc-anchor-lib.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/vpc-anchor-lib.sh"
@@ -38,6 +39,11 @@ ECS_VPC="$(sg_live_vpc_id "$ECS_SG")"
 ALB_VPC="$(sg_live_vpc_id "$ALB_SG")"
 
 echo "[guard-sg-rule] Regla ECS←ALB: ecs=$ECS_SG ($ECS_VPC) alb=$ALB_SG ($ALB_VPC) ancla=$ANCHOR"
+
+if [ "$ALB_SG" = "$KNOWN_ORPHAN_ALB_SG" ]; then
+  echo "::error::Regla ECS-ALB referencia SG huérfano $KNOWN_ORPHAN_ALB_SG (VPC incorrecta). No aplicar."
+  exit 1
+fi
 
 if [ -z "$ECS_VPC" ] || [ -z "$ALB_VPC" ] || [ "$ECS_VPC" != "$ALB_VPC" ]; then
   echo "::error::Regla ECS-ALB cross-VPC ($ECS_VPC vs $ALB_VPC). No aplicar."

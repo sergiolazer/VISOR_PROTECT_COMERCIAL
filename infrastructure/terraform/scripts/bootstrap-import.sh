@@ -225,6 +225,46 @@ discover_alb_sg() {
   discover_sg_in_vpc "${PREFIX}-alb"
 }
 
+# Si el ALB en AWS usa un SG de otra VPC, apuntarlo al SG ${PREFIX}-alb en la VPC ancla (cuando exista).
+reconcile_alb_attach_anchor_sg() {
+  local alb_arn anchor_sg live_sg live_vpc
+
+  [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ] || return 0
+
+  anchor_sg="$(discover_sg_in_vpc "${PREFIX}-alb")"
+  if ! aws_value_ok "$anchor_sg"; then
+    echo "[bootstrap-import] Sin SG ${PREFIX}-alb en VPC ancla — ALB SG sin cambios"
+    return 0
+  fi
+
+  alb_arn="$(aws elbv2 describe-load-balancers \
+    --query "LoadBalancers[?LoadBalancerName=='${PREFIX}-backend'].LoadBalancerArn | [0]" \
+    --output text 2>/dev/null || echo "")"
+  if ! aws_value_ok "$alb_arn"; then
+    return 0
+  fi
+
+  live_sg="$(aws elbv2 describe-load-balancers --load-balancer-arns "$alb_arn" \
+    --query 'LoadBalancers[0].SecurityGroups[0]' --output text 2>/dev/null || echo "")"
+  if [ "$live_sg" = "$anchor_sg" ]; then
+    echo "[bootstrap-import] ALB ya usa SG ancla $anchor_sg"
+    return 0
+  fi
+
+  live_vpc="$(sg_vpc_id "$live_sg")"
+  if [ -n "$live_vpc" ] && [ "$live_vpc" != "None" ] && [ "$live_vpc" = "$VPC_ID" ]; then
+    echo "[bootstrap-import] ALB SG $live_sg ya en VPC ancla — sin cambios"
+    return 0
+  fi
+
+  echo "[bootstrap-import] ALB usa SG $live_sg (VPC ${live_vpc:-?}) — set-security-groups -> $anchor_sg"
+  if aws elbv2 set-security-groups --load-balancer-arn "$alb_arn" --security-groups "$anchor_sg" >/dev/null 2>&1; then
+    echo "[bootstrap-import] ALB actualizado a SG ancla $anchor_sg"
+  else
+    echo "::warning::No se pudo actualizar SG del ALB a $anchor_sg"
+  fi
+}
+
 # Alinea SG al nombre dentro de la VPC ancla (state rm si apunta a otra VPC).
 reconcile_sg_for_vpc() {
   local addr="$1"
@@ -540,6 +580,10 @@ if [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ]; then
       --output text 2>/dev/null || echo "")"
   fi
   reconcile_resource_id 'aws_lb_target_group.backend[0]' "$tg_arn"
+
+  if [ "${TF_VAR_enable_ecs:-false}" = "true" ]; then
+    reconcile_alb_attach_anchor_sg
+  fi
 fi
 
 assert_in_state_if_exists \
