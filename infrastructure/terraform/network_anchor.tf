@@ -1,6 +1,4 @@
 # VPC ancla y Security Groups dentro de esa VPC.
-# La VPC ancla se deriva de subnets Redis que existen en AWS (el subnet group puede
-# listar IDs obsoletos; aws_subnets filtra solo los válidos).
 
 data "aws_elasticache_subnet_group" "anchor" {
   name = "${local.name_prefix}-redis"
@@ -70,6 +68,16 @@ data "aws_security_groups" "redis_in_anchor" {
   }
 }
 
+data "aws_security_group" "alb_anchor_live" {
+  count = local.enable_compute && length(data.aws_security_groups.alb_in_anchor[0].ids) > 0 ? 1 : 0
+  id    = data.aws_security_groups.alb_in_anchor[0].ids[0]
+}
+
+data "aws_security_group" "ecs_anchor_live" {
+  count = local.enable_compute && length(data.aws_security_groups.ecs_tasks_in_anchor[0].ids) > 0 ? 1 : 0
+  id    = data.aws_security_groups.ecs_tasks_in_anchor[0].ids[0]
+}
+
 locals {
   alb_sg_discovered = local.enable_compute && length(data.aws_security_groups.alb_in_anchor[0].ids) > 0 ? (
     data.aws_security_groups.alb_in_anchor[0].ids[0]
@@ -98,5 +106,11 @@ locals {
     try(aws_security_group.redis.id, null)
   )
 
-  ecs_alb_rule_ready = local.enable_compute && local.alb_sg_discovered != null && local.ecs_sg_discovered != null
+  ecs_alb_sgs_same_vpc = local.enable_compute \
+    && length(data.aws_security_group.alb_anchor_live) > 0 \
+    && length(data.aws_security_group.ecs_anchor_live) > 0 \
+    && data.aws_security_group.alb_anchor_live[0].vpc_id == data.aws_security_group.ecs_anchor_live[0].vpc_id \
+    && data.aws_security_group.alb_anchor_live[0].vpc_id == local.anchor_vpc_id
+
+  ecs_alb_rule_ready = local.ecs_alb_sgs_same_vpc
 }

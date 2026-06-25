@@ -193,5 +193,23 @@ log_plan_summary
 
 bash "$SCRIPTS/guard-network-plan.sh" pre-apply.plan
 
+if ! bash "$SCRIPTS/guard-sg-rule-plan.sh" pre-apply.plan; then
+  echo "[pre-apply] Regla ECS-ALB inválida — purga SG huérfanos y re-plan..."
+  bash "$SCRIPTS/reconcile-state.sh"
+  set +e
+  tf_plan
+  ec=$?
+  set -e
+  if [ "$ec" -eq 1 ]; then
+    echo "::error::terraform plan falló tras purga SG"
+    exit 1
+  fi
+  log_plan_summary
+  bash "$SCRIPTS/guard-sg-rule-plan.sh" pre-apply.plan || {
+    echo "::error::El plan sigue proponiendo regla ECS-ALB cross-VPC"
+    exit 1
+  }
+fi
+
 echo "[pre-apply] Apply..."
 tf_apply

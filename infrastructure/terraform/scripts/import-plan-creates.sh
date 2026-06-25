@@ -23,32 +23,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/aws-probe.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/import-shared.sh"
 # shellcheck source=terraform-import-lib.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/terraform-import-lib.sh"
+# shellcheck source=vpc-anchor-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/vpc-anchor-lib.sh"
 
 IMPORT_TIMEOUT="${TF_IMPORT_TIMEOUT_SEC:-180}"
-
-sg_live_vpc_id() {
-  local sg_id="$1"
-  [ -z "$sg_id" ] || [ "$sg_id" = "None" ] && return 0
-  aws ec2 describe-security-groups --group-ids "$sg_id" \
-    --query 'SecurityGroups[0].VpcId' --output text 2>/dev/null || echo ""
-}
-
-sg_in_anchor_vpc() {
-  local sg_id="$1"
-  local vpc
-  [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ] && return 1
-  [ -z "$sg_id" ] || [ "$sg_id" = "None" ] && return 1
-  vpc="$(sg_live_vpc_id "$sg_id")"
-  [ -n "$vpc" ] && [ "$vpc" != "None" ] && [ "$vpc" = "$VPC_ID" ]
-}
-
-sg_by_name_in_anchor() {
-  local group_name="$1"
-  [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ] && return 0
-  aws ec2 describe-security-groups \
-    --filters "Name=vpc-id,Values=${VPC_ID}" "Name=group-name,Values=${group_name}" \
-    --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo ""
-}
 
 purge_sg_from_state_if_wrong_vpc() {
   local addr="$1"
@@ -73,7 +51,7 @@ import_if_planned_create() {
 
   [ -z "$aws_id" ] || [ "$aws_id" = "None" ] && return 0
 
-  if [[ "$addr" == aws_security_group* ]] && ! sg_in_anchor_vpc "$aws_id"; then
+  if [[ "$addr" == aws_security_group* ]] && ! sg_in_vpc "$aws_id" "$VPC_ID"; then
     echo "[import-plan-creates] omitir $addr — SG $aws_id no está en VPC ancla ${VPC_ID:-?}"
     return 0
   fi
@@ -114,42 +92,26 @@ echo "[import-plan-creates] Procesando creates del plan..."
 
 import_shared_resources planned "$PLAN_FILE"
 
-VPC_ID=""
-CACHE_SUBNET="$(aws elasticache describe-cache-clusters \
-  --cache-cluster-id "${PREFIX}-redis" \
-  --query 'CacheClusters[0].CacheSubnetGroupName' --output text 2>/dev/null || echo "")"
-if [ -n "$CACHE_SUBNET" ] && [ "$CACHE_SUBNET" != "None" ]; then
-  SUBNET_REF="$(aws elasticache describe-cache-subnet-groups \
-    --cache-subnet-group-name "$CACHE_SUBNET" \
-    --query 'CacheSubnetGroups[0].Subnets[0].SubnetIdentifier' --output text 2>/dev/null || echo "")"
-  if [ -n "$SUBNET_REF" ] && [ "$SUBNET_REF" != "None" ]; then
-    VPC_ID="$(aws ec2 describe-subnets --subnet-ids "$SUBNET_REF" \
-      --query 'Subnets[0].VpcId' --output text 2>/dev/null || echo "")"
-  fi
+VPC_ID="$(discover_anchor_vpc_id "$PREFIX")"
+echo "[import-plan-creates] VPC ancla: ${VPC_ID:-?}"
+
+if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
+  purge_sg_from_state_if_wrong_vpc 'aws_security_group.alb[0]'
+  purge_sg_from_state_if_wrong_vpc 'aws_security_group.ecs_tasks[0]'
+  purge_sg_from_state_if_wrong_vpc 'aws_security_group.redis'
 fi
 
 if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   import_if_planned_create 'aws_vpc.main' "$VPC_ID" "aws ec2 describe-vpcs --vpc-ids $VPC_ID"
 fi
 
-SG_REDIS=""
-if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
-  SG_REDIS="$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=${VPC_ID}" "Name=group-name,Values=${PREFIX}-redis" --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")"
-fi
-if [ -z "$SG_REDIS" ] || [ "$SG_REDIS" = "None" ]; then
-  SG_REDIS="$(aws elasticache describe-cache-clusters --cache-cluster-id "${PREFIX}-redis" --query 'CacheClusters[0].SecurityGroups[0].SecurityGroupId' --output text 2>/dev/null || echo "")"
-  if ! sg_in_anchor_vpc "$SG_REDIS"; then
-    echo "[import-plan-creates] SG Redis ElastiCache $SG_REDIS fuera de VPC ancla — omitir"
-    SG_REDIS=""
-  fi
-fi
+SG_REDIS="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-redis")"
 import_if_planned_create 'aws_security_group.redis' "$SG_REDIS" "aws ec2 describe-security-groups --group-ids $SG_REDIS"
 
-# ALB SG: solo por nombre en VPC ancla (nunca el SG adjunto al ALB si está en otra VPC).
-SG_ALB="$(sg_by_name_in_anchor "${PREFIX}-alb")"
-import_if_planned_create 'aws_security_group.alb[0]' "$SG_ALB" "aws ec2 describe-security-groups --group-ids $SG_ALB"
+# ALB SG: nunca importar — si no existe en VPC ancla, apply lo crea (evita SG huérfano del ALB).
+echo "[import-plan-creates] aws_security_group.alb[0]: omitido (solo create en VPC ancla)"
 
-SG_ECS="$(sg_by_name_in_anchor "${PREFIX}-ecs")"
+SG_ECS="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-ecs")"
 import_if_planned_create 'aws_security_group.ecs_tasks[0]' "$SG_ECS" "aws ec2 describe-security-groups --group-ids $SG_ECS"
 
 import_if_planned_create \

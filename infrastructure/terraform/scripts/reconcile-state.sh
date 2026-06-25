@@ -11,9 +11,11 @@ PREFIX="${PROJECT}-${ENV}"
 
 # shellcheck source=aws-probe.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/aws-probe.sh"
+# shellcheck source=vpc-anchor-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/vpc-anchor-lib.sh"
 
 KNOWN_ORPHAN_SG="sg-0dbb342ef24119cb9"
-KNOWN_ORPHAN_ECS_SG="sg-02e436ef49a397c21"
+KNOWN_ORPHAN_ALB_SG="sg-04402f38fc4401001"
 KNOWN_PRIVATE_SUBNET="subnet-0f19bd9d7914446de"
 
 echo "[reconcile-state] Estabilizando recursos de red y Redis..."
@@ -95,40 +97,6 @@ prune_state_by_aws_id() {
       terraform state rm "$addr" || true
     fi
   done < <(terraform state list 2>/dev/null || true)
-}
-
-discover_anchor_vpc_id() {
-  local cache_subnet subnet_id vpc_id
-
-  cache_subnet="$(aws elasticache describe-cache-clusters \
-    --cache-cluster-id "${PREFIX}-redis" \
-    --query 'CacheClusters[0].CacheSubnetGroupName' --output text 2>/dev/null || echo "")"
-
-  if [ -n "$cache_subnet" ] && [ "$cache_subnet" != "None" ]; then
-    subnet_id="$(aws elasticache describe-cache-subnet-groups \
-      --cache-subnet-group-name "$cache_subnet" \
-      --query 'CacheSubnetGroups[0].Subnets[0].SubnetIdentifier' --output text 2>/dev/null || echo "")"
-    if [ -n "$subnet_id" ] && [ "$subnet_id" != "None" ]; then
-      vpc_id="$(aws ec2 describe-subnets --subnet-ids "$subnet_id" \
-        --query 'Subnets[0].VpcId' --output text 2>/dev/null || echo "")"
-      if [ -n "$vpc_id" ] && [ "$vpc_id" != "None" ]; then
-        echo "$vpc_id"
-        return 0
-      fi
-    fi
-  fi
-
-  vpc_id="$(aws ec2 describe-vpcs \
-    --filters "Name=tag:Name,Values=${PREFIX}-vpc" \
-    --query 'Vpcs[0].VpcId' --output text 2>/dev/null || echo "")"
-  echo "$vpc_id"
-}
-
-sg_live_vpc_id() {
-  local sg_id="$1"
-  [ -z "$sg_id" ] || [ "$sg_id" = "None" ] && return 0
-  aws ec2 describe-security-groups --group-ids "$sg_id" \
-    --query 'SecurityGroups[0].VpcId' --output text 2>/dev/null || echo ""
 }
 
 purge_sg_rules_for_compute() {
@@ -225,9 +193,9 @@ for addr in "${LEGACY[@]}"; do
 done
 
 prune_state_by_aws_id "$KNOWN_ORPHAN_SG"
-prune_state_by_aws_id "$KNOWN_ORPHAN_ECS_SG"
+prune_state_by_aws_id "$KNOWN_ORPHAN_ALB_SG"
 
-ANCHOR_VPC="$(discover_anchor_vpc_id)"
+ANCHOR_VPC="$(discover_anchor_vpc_id "$PREFIX")"
 if [ -n "$ANCHOR_VPC" ] && [ "$ANCHOR_VPC" != "None" ]; then
   echo "[reconcile-state] VPC ancla: $ANCHOR_VPC"
   purge_compute_sgs_not_in_anchor "$ANCHOR_VPC"
