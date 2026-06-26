@@ -26,6 +26,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/aws-probe.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/import-shared.sh"
 # shellcheck source=terraform-import-lib.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/terraform-import-lib.sh"
+# shellcheck source=vpc-anchor-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/vpc-anchor-lib.sh"
 
 in_state() {
   terraform state show -no-color "$1" >/dev/null 2>&1
@@ -382,27 +384,7 @@ fi
 import_shared_resources bootstrap
 
 discover_vpc_from_redis() {
-  local subnet_id vpc_id cache_subnet
-
-  cache_subnet="$(aws elasticache describe-cache-clusters \
-    --cache-cluster-id "${PREFIX}-redis" \
-    --query 'CacheClusters[0].CacheSubnetGroupName' --output text 2>/dev/null || echo "")"
-
-  if [ -n "$cache_subnet" ] && [ "$cache_subnet" != "None" ]; then
-    subnet_id="$(aws elasticache describe-cache-subnet-groups \
-      --cache-subnet-group-name "$cache_subnet" \
-      --query 'CacheSubnetGroups[0].Subnets[0].SubnetIdentifier' --output text 2>/dev/null || echo "")"
-    if [ -n "$subnet_id" ] && [ "$subnet_id" != "None" ]; then
-      vpc_id="$(aws ec2 describe-subnets --subnet-ids "$subnet_id" \
-        --query 'Subnets[0].VpcId' --output text 2>/dev/null || echo "")"
-      if [ -n "$vpc_id" ] && [ "$vpc_id" != "None" ]; then
-        echo "$vpc_id"
-        return 0
-      fi
-    fi
-  fi
-
-  echo ""
+  discover_anchor_vpc_id "$PREFIX"
 }
 
 discover_redis_security_group() {

@@ -12,6 +12,7 @@ PROJECT="${TF_VAR_project_name:-visor-protect}"
 ENV="${TF_VAR_environment:-production}"
 PREFIX="${PROJECT}-${ENV}"
 KNOWN_ORPHAN_ALB_SG="sg-04402f38fc4401001"
+KNOWN_ORPHAN_VPC="vpc-0bf20c37978ae8d93"
 
 # shellcheck source=vpc-anchor-lib.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/vpc-anchor-lib.sh"
@@ -34,6 +35,10 @@ RULE_JSON="$(terraform show -json "$PLAN_FILE" | jq -c '
 ECS_SG="$(echo "$RULE_JSON" | jq -r '.security_group_id // empty')"
 ALB_SG="$(echo "$RULE_JSON" | jq -r '.source_security_group_id // empty')"
 ANCHOR="$(discover_anchor_vpc_id "$PREFIX")"
+if [ "$ANCHOR" = "$KNOWN_ORPHAN_VPC" ]; then
+  echo "[guard-sg-rule] Ancla detectada como VPC huérfana $KNOWN_ORPHAN_VPC — usando VPC de los SGs"
+  ANCHOR=""
+fi
 
 ECS_VPC="$(sg_live_vpc_id "$ECS_SG")"
 ALB_VPC="$(sg_live_vpc_id "$ALB_SG")"
@@ -53,6 +58,14 @@ fi
 if [ -n "$ANCHOR" ] && [ "$ANCHOR" != "None" ] && [ "$ECS_VPC" != "$ANCHOR" ]; then
   echo "::error::SGs de la regla ECS-ALB no están en VPC ancla $ANCHOR (están en $ECS_VPC)."
   exit 1
+fi
+
+# Si no hay ancla fiable pero ambos SGs comparten VPC, aceptar
+if [ -z "$ANCHOR" ] || [ "$ANCHOR" = "None" ]; then
+  if [ "$ECS_VPC" = "$ALB_VPC" ]; then
+    echo "[guard-sg-rule] OK — misma VPC ($ECS_VPC), ancla inferida de SGs"
+    exit 0
+  fi
 fi
 
 echo "[guard-sg-rule] OK — misma VPC para regla ECS-ALB"
