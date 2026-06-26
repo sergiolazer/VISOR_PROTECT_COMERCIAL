@@ -199,6 +199,27 @@ jobs:
           fi
           echo "ecs_service_name=$ECS_SERVICE" >> "$GITHUB_OUTPUT"
 
+      - name: Frontend (Vercel) — variables a actualizar
+        if: success() && steps.tf_outputs.outputs.backend_service_url != ''
+        run: |
+          BACKEND="${{ steps.tf_outputs.outputs.backend_service_url }}"
+          CORS="${{ vars.CORS_ORIGIN }}"
+          {
+            echo "## Frontend — actualizar Vercel"
+            echo ""
+            echo "Tras recrear el ALB, copia estas variables en **Vercel → Project → Settings → Environment Variables** (entorno **Production**), luego **Deployments → Redeploy**."
+            echo ""
+            echo "| Variable | Valor |"
+            echo "|----------|-------|"
+            echo "| \`VITE_API_URL\` | \`${BACKEND}\` |"
+            echo "| \`VITE_SOCKET_URL\` | \`${BACKEND}\` |"
+            echo ""
+            echo "GitHub Variable \`CORS_ORIGIN\` (backend): \`${CORS:-https://visor-protect-comercial-frontend.vercel.app}\`"
+            echo ""
+            echo "Probar backend: \`${BACKEND}/health\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::Vercel — VITE_API_URL y VITE_SOCKET_URL = ${BACKEND}"
+
       - name: Upload plan artifact
         if: always()
         uses: actions/upload-artifact@v4
