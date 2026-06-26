@@ -106,11 +106,13 @@ locals {
     try(aws_security_group.redis.id, null)
   )
 
-  ecs_alb_sgs_same_vpc = local.enable_compute \
-    && length(data.aws_security_group.alb_anchor_live) > 0 \
-    && length(data.aws_security_group.ecs_anchor_live) > 0 \
-    && data.aws_security_group.alb_anchor_live[0].vpc_id == data.aws_security_group.ecs_anchor_live[0].vpc_id \
+  ecs_alb_sgs_same_vpc = (
+    local.enable_compute
+    && length(data.aws_security_group.alb_anchor_live) > 0
+    && length(data.aws_security_group.ecs_anchor_live) > 0
+    && data.aws_security_group.alb_anchor_live[0].vpc_id == data.aws_security_group.ecs_anchor_live[0].vpc_id
     && data.aws_security_group.alb_anchor_live[0].vpc_id == local.anchor_vpc_id
+  )
 
   ecs_alb_rule_ready = local.ecs_alb_sgs_same_vpc
 }
