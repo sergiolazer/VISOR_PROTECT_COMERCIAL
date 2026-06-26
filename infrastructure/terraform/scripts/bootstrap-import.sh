@@ -461,10 +461,114 @@ discover_vpc_id() {
   echo "$vpc_id"
 }
 
+# ALB/TG en VPC distinta a la ancla impiden registrar targets ECS (IP) y rompen el tráfico.
+reconcile_orphan_alb_tg_for_anchor() {
+  local anchor="${VPC_ID:-}"
+  local alb_arn alb_vpc tg_arn tg_vpc
+
+  [ -n "$anchor" ] && [ "$anchor" != "None" ] || return 0
+  [ "${TF_VAR_enable_ecs:-false}" != "true" ] && return 0
+
+  alb_arn="$(aws elbv2 describe-load-balancers \
+    --query "LoadBalancers[?LoadBalancerName=='${PREFIX}-backend'].LoadBalancerArn | [0]" \
+    --output text 2>/dev/null || echo "")"
+  if ! aws_value_ok "$alb_arn"; then
+    return 0
+  fi
+
+  alb_vpc="$(aws elbv2 describe-load-balancers --load-balancer-arns "$alb_arn" \
+    --query 'LoadBalancers[0].VpcId' --output text 2>/dev/null || echo "")"
+
+  tg_arn="$(aws elbv2 describe-target-groups \
+    --names "${PREFIX}-backend" \
+    --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || echo "")"
+  if ! aws_value_ok "$tg_arn"; then
+    tg_arn="$(aws elbv2 describe-target-groups \
+      --query "TargetGroups[?TargetGroupName=='${PREFIX}-backend'].TargetGroupArn | [0]" \
+      --output text 2>/dev/null || echo "")"
+  fi
+
+  tg_vpc=""
+  if aws_value_ok "$tg_arn"; then
+    tg_vpc="$(aws elbv2 describe-target-groups --target-group-arns "$tg_arn" \
+      --query 'TargetGroups[0].VpcId' --output text 2>/dev/null || echo "")"
+  fi
+
+  if [ "$alb_vpc" = "$anchor" ] && [ "$tg_vpc" = "$anchor" ]; then
+    echo "[bootstrap-import] ALB/TG en VPC ancla $anchor"
+    return 0
+  fi
+
+  echo "[bootstrap-import] ALB (VPC ${alb_vpc:-?}) o TG (VPC ${tg_vpc:-?}) != ancla $anchor"
+  echo "::warning::Eliminando ALB/TG/ECS service huérfanos para recreación en VPC ancla"
+
+  if ecs_service_arn "$PREFIX" >/dev/null 2>&1; then
+    echo "[bootstrap-import] Eliminando ECS service (recreación en apply)..."
+    aws ecs update-service \
+      --cluster "${PREFIX}-backend" \
+      --service "${PREFIX}-backend" \
+      --desired-count 0 \
+      --no-cli-pager >/dev/null 2>&1 || true
+    aws ecs delete-service \
+      --cluster "${PREFIX}-backend" \
+      --service "${PREFIX}-backend" \
+      --force \
+      --no-cli-pager >/dev/null 2>&1 || true
+    sleep 10
+  fi
+
+  for addr in \
+    'aws_ecs_service.backend[0]' \
+    'aws_lb_listener.http[0]' \
+    'aws_lb.backend[0]' \
+    'aws_lb_target_group.backend[0]'; do
+    if in_state "$addr"; then
+      echo "[bootstrap-import] state rm $addr (migración ALB/TG)"
+      terraform state rm "$addr" 2>/dev/null || true
+    fi
+  done
+
+  if aws_value_ok "$alb_arn"; then
+    aws elbv2 delete-load-balancer --load-balancer-arn "$alb_arn" 2>/dev/null || true
+    echo "[bootstrap-import] ALB huérfano eliminado"
+    sleep 15
+  fi
+
+  if aws_value_ok "$tg_arn"; then
+    aws elbv2 delete-target-group --target-group-arn "$tg_arn" 2>/dev/null || true
+    echo "[bootstrap-import] TG huérfano eliminado"
+  fi
+}
+
+log_private_subnet_nat_routes() {
+  local cidr subnet_id nat_route
+
+  [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ] || return 0
+
+  for cidr in "10.20.1.0/24" "10.20.2.0/24"; do
+    subnet_id="$(aws ec2 describe-subnets \
+      --filters "Name=vpc-id,Values=${VPC_ID}" "Name=cidr-block,Values=${cidr}" \
+      --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")"
+    [ -z "$subnet_id" ] || [ "$subnet_id" = "None" ] && continue
+    nat_route="$(aws ec2 describe-route-tables \
+      --filters "Name=association.subnet-id,Values=${subnet_id}" \
+      --query 'RouteTables[0].Routes[?NatGatewayId!=`null`].NatGatewayId | [0]' \
+      --output text 2>/dev/null || echo "")"
+    if aws_value_ok "$nat_route"; then
+      echo "[bootstrap-import] Subnet $cidr ($subnet_id) → NAT $nat_route"
+    else
+      echo "::warning::Subnet privada $cidr ($subnet_id) sin ruta NAT — VPC endpoints cubrirán APIs AWS"
+    fi
+  done
+}
+
 import_compute_ecs() {
   local tg_arn listener_arn task_def_arn alb_arn
 
   echo "[bootstrap-import] ECS Fargate + ALB..."
+
+  reconcile_orphan_alb_tg_for_anchor
+  log_private_subnet_nat_routes
 
   reconcile_resource_id \
     'aws_iam_role.ecs_execution[0]' \
