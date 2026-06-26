@@ -66,7 +66,17 @@ ecs_service_arn() {
   esac
 }
 
-# Quita del state recursos ECS efímeros si no existen en AWS (nunca importar el service).
+# ID de import Terraform: regla ingress desde otro security group.
+sg_rule_import_id_ingress() {
+  local sg_id="$1"
+  local source_sg="$2"
+  local from_port="$3"
+  local to_port="$4"
+  local protocol="${5:-tcp}"
+  echo "${sg_id}_${source_sg}_${from_port}_${to_port}_${protocol}"
+}
+
+# Quita del state recursos ECS efímeros si no existen en AWS.
 purge_ephemeral_ecs_state() {
   local prefix="${1:?}"
   local addr

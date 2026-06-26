@@ -158,6 +158,9 @@ STABLE=(
   'aws_iam_role_policy.ecs_execution_secrets[0]'
   'aws_iam_role_policy.ecs_task[0]'
   'aws_ecs_cluster.backend[0]'
+  'aws_ecs_service.backend[0]'
+  'aws_security_group_rule.redis_from_ecs[0]'
+  'aws_security_group_rule.ecs_tasks_from_alb[0]'
 )
 
 purge_legacy_from_state

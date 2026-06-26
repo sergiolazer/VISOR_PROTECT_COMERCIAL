@@ -515,9 +515,11 @@ import_compute_ecs() {
     reconcile_resource_id 'aws_lb_listener.http[0]' "$listener_arn"
   fi
 
-  # Nunca importar aws_ecs_service: si no existe en AWS, apply lo crea; si hay drift, purge_ephemeral_ecs_state lo limpia.
   if ecs_service_arn "$PREFIX" >/dev/null 2>&1; then
-    echo "[bootstrap-import] ECS service ACTIVE en AWS — gestionado por Terraform apply (sin import)"
+    import_when_needed \
+      'aws_ecs_service.backend[0]' \
+      "${PREFIX}-backend/${PREFIX}-backend" \
+      "aws ecs describe-services --cluster ${PREFIX}-backend --services ${PREFIX}-backend --query 'services[?status==\`ACTIVE\` || status==\`DRAINING\`].serviceArn | [0]' --output text"
   else
     echo "[bootstrap-import] ECS service ausente — se creará en apply"
   fi
@@ -583,6 +585,26 @@ if [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ]; then
 
   if [ "${TF_VAR_enable_ecs:-false}" = "true" ]; then
     reconcile_alb_attach_anchor_sg
+
+    ECS_SG_ADOPT="$(discover_sg_in_vpc "${PREFIX}-ecs")"
+    REDIS_SG_ADOPT="$(discover_sg_in_vpc "${PREFIX}-redis")"
+    ALB_SG_ADOPT="$(discover_sg_in_vpc "${PREFIX}-alb")"
+
+    if aws_value_ok "$REDIS_SG_ADOPT" && aws_value_ok "$ECS_SG_ADOPT"; then
+      RULE_ID="$(sg_rule_import_id_ingress "$REDIS_SG_ADOPT" "$ECS_SG_ADOPT" 6379 6379)"
+      import_when_needed \
+        'aws_security_group_rule.redis_from_ecs[0]' \
+        "$RULE_ID" \
+        "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${REDIS_SG_ADOPT} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${ECS_SG_ADOPT}' && FromPort==\`6379\`].SecurityGroupRuleId | [0]\" --output text"
+    fi
+
+    if aws_value_ok "$ECS_SG_ADOPT" && aws_value_ok "$ALB_SG_ADOPT"; then
+      RULE_ID="$(sg_rule_import_id_ingress "$ECS_SG_ADOPT" "$ALB_SG_ADOPT" 3001 3001)"
+      import_when_needed \
+        'aws_security_group_rule.ecs_tasks_from_alb[0]' \
+        "$RULE_ID" \
+        "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${ECS_SG_ADOPT} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${ALB_SG_ADOPT}' && FromPort==\`3001\`].SecurityGroupRuleId | [0]\" --output text"
+    fi
   fi
 fi
 

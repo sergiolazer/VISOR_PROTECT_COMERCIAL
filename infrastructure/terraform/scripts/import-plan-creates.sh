@@ -158,8 +158,27 @@ import_if_planned_create \
   "${PREFIX}-backend" \
   "aws ecs describe-clusters --clusters ${PREFIX}-backend --query 'clusters[?status==\`ACTIVE\`].clusterName' --output text"
 
-# aws_ecs_service.backend[0] — NUNCA importar (causa hangs y fallos MISSING). Apply lo crea.
-echo "[import-plan-creates] ECS service: omitido (create vía apply si el plan lo indica)"
+import_if_planned_create \
+  'aws_ecs_service.backend[0]' \
+  "${PREFIX}-backend/${PREFIX}-backend" \
+  "aws ecs describe-services --cluster ${PREFIX}-backend --services ${PREFIX}-backend --query 'services[?status==\`ACTIVE\` || status==\`DRAINING\`].serviceArn | [0]' --output text"
+
+SG_ALB="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-alb")"
+if aws_value_ok "$SG_REDIS" && aws_value_ok "$SG_ECS"; then
+  RULE_ID="$(sg_rule_import_id_ingress "$SG_REDIS" "$SG_ECS" 6379 6379)"
+  import_if_planned_create \
+    'aws_security_group_rule.redis_from_ecs[0]' \
+    "$RULE_ID" \
+    "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${SG_REDIS} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${SG_ECS}' && FromPort==\`6379\`].SecurityGroupRuleId | [0]\" --output text"
+fi
+
+if aws_value_ok "$SG_ECS" && aws_value_ok "$SG_ALB"; then
+  RULE_ID="$(sg_rule_import_id_ingress "$SG_ECS" "$SG_ALB" 3001 3001)"
+  import_if_planned_create \
+    'aws_security_group_rule.ecs_tasks_from_alb[0]' \
+    "$RULE_ID" \
+    "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${SG_ECS} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${SG_ALB}' && FromPort==\`3001\`].SecurityGroupRuleId | [0]\" --output text"
+fi
 
 # Subnets por CIDR en VPC ancla
 if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
