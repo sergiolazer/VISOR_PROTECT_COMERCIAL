@@ -31,7 +31,7 @@ Guía para activar y operar el backend en producción tras el bootstrap (fase 1)
 | `AWS_REGION` | **`sa-east-1`** |
 | `ENABLE_ECS` | `true` |
 | `CORS_ORIGIN` | URL del frontend (Vercel), ej. `https://visor-protect-comercial-frontend.vercel.app` |
-| `GITHUB_ORG` | `sergiolazer` *(o tu org)* |
+| `GITHUB_ORG` | No crear — GitHub bloquea el prefijo `GITHUB_`. El workflow usa `sergiolazer` vía `repository_owner`. Solo define `TF_GITHUB_ORG` si el org difiere del dueño del repo. |
 | `GITHUB_REPO` | `VISOR_PROTECT_COMERCIAL` *(opcional)* |
 | `ECR_IMAGE_TAG` | `latest` *(opcional)* |
 

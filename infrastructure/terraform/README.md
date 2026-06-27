@@ -31,7 +31,7 @@ Workflow `.github/workflows/deploy.yml` en push a `main`:
 | Variable | `AWS_REGION` | **`sa-east-1`** |
 | Variable | `ENABLE_ECS` | `true` en producción |
 | Variable | `CORS_ORIGIN` | URL frontend (Vercel) |
-| Variable | `GITHUB_ORG` | Org GitHub OIDC |
+| Variable | `TF_GITHUB_ORG` | Opcional; default `repository_owner` |
 
 ## Outputs útiles
 

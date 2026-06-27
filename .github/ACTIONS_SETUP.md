@@ -16,7 +16,7 @@ Frontend (CORS_ORIGIN): [docs/FRONTEND_DEPLOY.md](../docs/FRONTEND_DEPLOY.md)
 
 | Nombre | Valor | Notas |
 |--------|-------|-------|
-| `GITHUB_ORG` | *(opcional)* | Default: `github.repository_owner` |
+| `TF_GITHUB_ORG` | *(opcional)* | Default: `github.repository_owner` (`sergiolazer`). GitHub **no permite** variables con prefijo `GITHUB_`. |
 | `CORS_ORIGIN` | *(opcional)* | Default bootstrap: `http://localhost:5173` |
 | `ENABLE_ECS` | `false` | Mantener hasta fase 2 |
 | `AWS_REGION` | `sa-east-1` | ECR, Redis, VPC, ECS |

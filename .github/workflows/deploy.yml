@@ -17,7 +17,7 @@ env:
   TF_WORKING_DIR: infrastructure/terraform
 
 # Secrets:  AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-# Variables: GITHUB_ORG, CORS_ORIGIN, ENABLE_ECS (o ENABLE_APP_RUNNER legacy), GITHUB_REPO, ECR_IMAGE_TAG
+# Variables: TF_GITHUB_ORG (opcional), CORS_ORIGIN, ENABLE_ECS, GITHUB_REPO, ECR_IMAGE_TAG
 
 jobs:
   quality-gate:
@@ -67,14 +67,14 @@ jobs:
 
       - name: Resolve Terraform variables
         run: |
-          ORG="${{ vars.GITHUB_ORG }}"
+          ORG="${{ vars.TF_GITHUB_ORG }}"
           CORS="${{ vars.CORS_ORIGIN }}"
           ENABLE_ECS="${{ vars.ENABLE_ECS || vars.ENABLE_APP_RUNNER || 'false' }}"
           AWS_REG="${{ vars.AWS_REGION || 'sa-east-1' }}"
 
           if [ -z "$ORG" ]; then
             ORG="${{ github.repository_owner }}"
-            echo "GITHUB_ORG no configurado — usando repository_owner: $ORG"
+            echo "TF_GITHUB_ORG no configurado — usando repository_owner: $ORG"
           fi
 
           if [ -z "$CORS" ]; then
