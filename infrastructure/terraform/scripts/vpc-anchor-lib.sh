@@ -83,3 +83,39 @@ sg_by_name_in_vpc() {
     --filters "Name=vpc-id,Values=${vpc_id}" "Name=group-name,Values=${group_name}" \
     --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo ""
 }
+
+route_table_vpc_id() {
+  local rtb_id="$1"
+  [ -z "$rtb_id" ] || [ "$rtb_id" = "None" ] && return 0
+  aws ec2 describe-route-tables --route-table-ids "$rtb_id" \
+    --query 'RouteTables[0].VpcId' --output text 2>/dev/null || echo ""
+}
+
+discover_private_route_table_in_vpc() {
+  local vpc_id="$1"
+  local prefix="${2:-}"
+  local subnet_id rtb
+
+  [ -z "$vpc_id" ] || [ "$vpc_id" = "None" ] && return 0
+
+  if [ -n "$prefix" ]; then
+    rtb="$(aws ec2 describe-route-tables \
+      --filters "Name=vpc-id,Values=${vpc_id}" "Name=tag:Name,Values=${prefix}-private-rt" \
+      --query 'RouteTables[0].RouteTableId' --output text 2>/dev/null || echo "")"
+    if [ -n "$rtb" ] && [ "$rtb" != "None" ]; then
+      echo "$rtb"
+      return 0
+    fi
+  fi
+
+  subnet_id="$(aws ec2 describe-subnets \
+    --filters "Name=vpc-id,Values=${vpc_id}" "Name=cidr-block,Values=10.20.1.0/24" \
+    --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")"
+  if [ -z "$subnet_id" ] || [ "$subnet_id" = "None" ]; then
+    return 0
+  fi
+
+  aws ec2 describe-route-tables \
+    --filters "Name=association.subnet-id,Values=${subnet_id}" \
+    --query 'RouteTables[0].RouteTableId' --output text 2>/dev/null || echo ""
+}

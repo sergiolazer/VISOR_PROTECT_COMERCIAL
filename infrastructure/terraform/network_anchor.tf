@@ -93,7 +93,8 @@ locals {
   public_a_anchor_id = length(data.aws_subnets.public_a_anchor) > 0 && length(data.aws_subnets.public_a_anchor[0].ids) > 0 ? data.aws_subnets.public_a_anchor[0].ids[0] : try(aws_subnet.public_a[0].id, null)
   public_b_anchor_id = length(data.aws_subnets.public_b_anchor) > 0 && length(data.aws_subnets.public_b_anchor[0].ids) > 0 ? data.aws_subnets.public_b_anchor[0].ids[0] : try(aws_subnet.public_b[0].id, null)
 
-  private_anchor_route_table_id = length(data.aws_route_tables.private_anchor) > 0 && length(data.aws_route_tables.private_anchor[0].ids) > 0 ? data.aws_route_tables.private_anchor[0].ids[0] : try(aws_route_table.private[0].id, null)
+  # Sin fallback a aws_route_table.private[0]: el state puede tener un rtb de otra VPC.
+  private_anchor_route_table_id = length(data.aws_route_tables.private_anchor) > 0 && length(data.aws_route_tables.private_anchor[0].ids) > 0 ? data.aws_route_tables.private_anchor[0].ids[0] : null
 
   sg_name_alb       = "${local.name_prefix}-alb"
   sg_name_ecs_tasks = "${local.name_prefix}-ecs"

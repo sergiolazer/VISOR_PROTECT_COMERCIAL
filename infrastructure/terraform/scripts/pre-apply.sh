@@ -41,6 +41,7 @@ tf_apply() {
 sync_state() {
   cd "$ROOT"
   bash "$SCRIPTS/bootstrap-import.sh"
+  bash "$SCRIPTS/adopt-anchor-resources.sh"
   bash "$SCRIPTS/reconcile-state.sh"
   cd "$TF_DIR"
 }
@@ -98,7 +99,7 @@ plan_has_subnet_replace() {
 }
 
 cd "$TF_DIR"
-echo "[pre-apply] scripts-rev=2025-06-26-vpc-endpoints-anchor"
+echo "[pre-apply] scripts-rev=2025-06-27-sg-rule-import-fix"
 echo "[pre-apply] enable_ecs=${TF_VAR_enable_ecs}"
 sync_state
 

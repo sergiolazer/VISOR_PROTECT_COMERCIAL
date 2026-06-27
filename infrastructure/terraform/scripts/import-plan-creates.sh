@@ -121,6 +121,8 @@ import_if_planned_create() {
 
 echo "[import-plan-creates] Procesando creates del plan..."
 
+bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/adopt-anchor-resources.sh"
+
 import_shared_resources planned "$PLAN_FILE"
 
 VPC_ID="$(discover_anchor_vpc_id "$PREFIX")"

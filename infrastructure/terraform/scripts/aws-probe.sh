@@ -66,14 +66,14 @@ ecs_service_arn() {
   esac
 }
 
-# ID de import Terraform: regla ingress desde otro security group.
+# ID de import Terraform (aws_security_group_rule): sg_ID_ingress_protocol_from_to_source
 sg_rule_import_id_ingress() {
   local sg_id="$1"
   local source_sg="$2"
   local from_port="$3"
   local to_port="$4"
   local protocol="${5:-tcp}"
-  echo "${sg_id}_${source_sg}_${from_port}_${to_port}_${protocol}"
+  echo "${sg_id}_ingress_${protocol}_${from_port}_${to_port}_${source_sg}"
 }
 
 # Quita del state recursos ECS efímeros si no existen en AWS.

@@ -355,6 +355,9 @@ import_compute_network() {
   rt_priv="$(aws ec2 describe-route-tables \
     --filters "Name=vpc-id,Values=${VPC_ID}" "Name=tag:Name,Values=${PREFIX}-private-rt" \
     --query 'RouteTables[0].RouteTableId' --output text 2>/dev/null || echo "")"
+  if [ -z "$rt_priv" ] || [ "$rt_priv" = "None" ]; then
+    rt_priv="$(discover_private_route_table_in_vpc "$VPC_ID" "$PREFIX")"
+  fi
   reconcile_resource_id 'aws_route_table.private[0]' "$rt_priv"
 
   if [ -n "$pub_a" ] && [ "$pub_a" != "None" ] && [ -n "$rt_pub" ] && [ "$rt_pub" != "None" ]; then

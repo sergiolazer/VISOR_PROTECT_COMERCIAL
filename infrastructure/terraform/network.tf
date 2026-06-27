@@ -23,7 +23,7 @@ resource "aws_subnet" "public_a" {
   }
 
   lifecycle {
-    ignore_changes  = [availability_zone, tags, tags_all, map_public_ip_on_launch, vpc_id]
+    ignore_changes = [availability_zone, tags, tags_all, map_public_ip_on_launch, vpc_id]
   }
 }
 
@@ -40,7 +40,7 @@ resource "aws_subnet" "public_b" {
   }
 
   lifecycle {
-    ignore_changes  = [availability_zone, tags, tags_all, map_public_ip_on_launch, vpc_id]
+    ignore_changes = [availability_zone, tags, tags_all, map_public_ip_on_launch, vpc_id]
   }
 }
 
