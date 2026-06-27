@@ -1,6 +1,8 @@
 # Despliegue en la nube — Visor Protect Comercio
 
-Guía operativa para **Infrastructure as Code**, **CI/CD sin intervención humana** y **checklist Go-Live**.
+Guía operativa para **Infrastructure as Code**, **CI/CD** y **checklist Go-Live**.
+
+**Región de producción:** `sa-east-1` (São Paulo).
 
 ---
 
@@ -8,94 +10,80 @@ Guía operativa para **Infrastructure as Code**, **CI/CD sin intervención human
 
 ```mermaid
 flowchart LR
-  GH[GitHub Actions] -->|push main| ECR[ECR]
-  ECR --> AR[App Runner]
-  AR --> Atlas[(MongoDB Atlas M10)]
-  AR --> Redis[ElastiCache Redis]
-  AR --> S3[S3 media 7d TTL]
-  AR --> SM[Secrets Manager]
-  Users[Comercios Web/App] --> AR
-  CW[CloudWatch] --> AR
+  GH[GitHub Actions] -->|push main| ECR[ECR sa-east-1]
+  ECR --> ECS[ECS Fargate]
+  ALB[ALB] --> ECS
+  ECS --> Atlas[(MongoDB Atlas)]
+  ECS --> Redis[ElastiCache Redis]
+  ECS --> S3[S3 media 7d TTL]
+  ECS --> SM[Secrets Manager]
+  Users[Frontend Vercel] --> ALB
+  CW[CloudWatch] --> ALB
+  CW --> ECS
 ```
 
 | Componente | Servicio | Rol |
 |------------|----------|-----|
-| Compute | **App Runner** | Node.js + Socket.io, auto-scaling, rolling deploy |
-| Database | **MongoDB Atlas M10** | Geo + TTL (externo, URI en Secrets Manager) |
-| Pub/Sub alertas | **ElastiCache Redis** | Bus entre instancias App Runner |
-| Media | **S3** | Lifecycle 7 días (`visor-protect/chat/`) |
+| Compute | **ECS Fargate + ALB** | Node.js + Socket.io, rolling deploy |
+| Database | **MongoDB Atlas M10** | Geo + TTL (URI en Secrets Manager) |
+| Pub/Sub alertas | **ElastiCache Redis** | Bus entre tareas ECS |
+| Media | **S3** | Lifecycle 7 días |
 | Secretos | **Secrets Manager** | MONGO_URI, JWT, Cloudinary |
-| CI/CD | **GitHub Actions + OIDC** | Sin access keys estáticas |
-| Observabilidad | **CloudWatch** | Latencia p95, errores, CPU Redis |
-
-Push móvil (AWS SNS) queda como fase 2; el backend ya emite `alert_push` vía Socket.io.
+| Frontend | **Vercel** | Web App React |
+| CI/CD | **GitHub Actions** | Tests + Terraform + ECR + ECS |
+| Observabilidad | **CloudWatch** | ALB 5xx/latencia, ECS logs, Redis CPU |
 
 ---
 
 ## 1. Provisionar infraestructura (Terraform)
 
+En CI: workflow `.github/workflows/deploy.yml` (push a `main`).
+
+Local (opcional):
+
 ```bash
 cd infrastructure/terraform
-cp terraform.tfvars.example terraform.tfvars
-# Editar: github_org, cors_origin
-
-terraform init && terraform plan && terraform apply
+terraform init
+terraform plan -var="enable_ecs=true" -var="github_org=..." -var="cors_origin=..."
 ```
 
-Registrar outputs en **GitHub → Settings → Secrets and variables → Actions**:
-
-| Secret / Variable | Origen |
-|-------------------|--------|
-| `AWS_DEPLOY_ROLE_ARN` | `terraform output github_deploy_role_arn` |
-| `APP_RUNNER_SERVICE_ARN` | `terraform output app_runner_service_arn` |
-| Variable `AWS_REGION` | ej. `sa-east-1` |
-| Variable `ECR_REPOSITORY` | ej. `visor-protect-backend` |
+Variables GitHub → ver [ACTIONS_SETUP.md](../.github/ACTIONS_SETUP.md).
 
 ---
 
 ## 2. MongoDB Atlas (M10)
 
-1. Crear cluster **M10** en la misma región lógica (São Paulo).
-2. Habilitar **2dsphere** en `shops`, `alert_events` (se sincronizan al arrancar con `syncMongoIndexes()`).
-3. Verificar TTL en `messages` — ver [DATA_RETENTION.md](./DATA_RETENTION.md).
-4. Restringir **Network Access** a IPs de App Runner o `0.0.0.0/0` temporalmente durante bootstrap (recomendado: VPC peering o PrivateLink en fase avanzada).
-5. Copiar connection string a Secrets Manager → `{prefix}/mongo-uri`.
+1. Cluster en región cercana a Brasil (ej. `SA_EAST_1` en Atlas).
+2. Índices `2dsphere` y TTL — `syncMongoIndexes()` al arrancar.
+3. Connection string en Secrets Manager → `visor-protect-production/mongo-uri`.
 
 ---
 
 ## 3. Pipeline CI/CD
 
-### Continuous Integration (cada PR)
+### CI (cada PR / push)
 
-Workflow: `.github/workflows/ci.yml`
+Workflow: `.github/workflows/ci.yml` → `npm run test:ci`.
 
-- `npm ci`
-- `npm run typecheck`
-- `npm run test:integration` (12 tests; Redis skip si no hay servicio)
+### CD (push a `main`)
 
-Si falla cualquier paso, **no se despliega**.
-
-### Continuous Deployment (push a `main`)
-
-Workflow unificado: `.github/workflows/deploy.yml`
-
-**Fase 2 (App Runner):** ver [PHASE_2.md](./PHASE_2.md).  
-**Frontend (CORS_ORIGIN):** ver [FRONTEND_DEPLOY.md](./FRONTEND_DEPLOY.md).
+Workflow: `.github/workflows/deploy.yml`
 
 ```mermaid
 flowchart LR
-  A[npm run test:ci] --> B[Terraform plan/apply]
-  B --> C[Docker build + ECR push]
-  C --> D[App Runner rolling update]
+  A[test:ci] --> B[Terraform apply]
+  B --> C[Docker → ECR]
+  C --> D[ECS force-new-deployment]
 ```
 
-1. **quality-gate** — `npm run test:ci` (18 tests).
-2. **terraform** — `fmt` → `init` → `validate` → `plan` → `apply`.
-3. **deploy-app** — build Docker, push a ECR (URL desde outputs Terraform), `apprunner start-deployment`.
+1. **quality-gate** — tests.
+2. **terraform** — bootstrap, plan, apply, artifact `terraform-state`.
+3. **deploy-app** — build, push ECR, actualizar servicio ECS.
 
-Redeploy solo app (sin Terraform): `.github/workflows/deploy-production.yml` → *Redeploy App Only* (manual).
+Redeploy solo app: `.github/workflows/deploy-production.yml` (manual).
 
-Frontend (opcional): build con `docker build -f frontend/Dockerfile .` y servir vía CloudFront + S3 o segundo App Runner.
+**Frontend:** [FRONTEND_DEPLOY.md](./FRONTEND_DEPLOY.md)  
+**Fase 2 / Go-Live:** [PHASE_2.md](./PHASE_2.md)
 
 ---
 
@@ -103,57 +91,42 @@ Frontend (opcional): build con `docker build -f frontend/Dockerfile .` y servir 
 
 ### Secret Management
 
-- [ ] `MONGO_URI`, `JWT_SECRET`, `CLOUDINARY_*` solo en **Secrets Manager** / env del servicio cloud
-- [ ] Ningún `.env` con secretos en el repositorio
-- [ ] Rotación documentada para JWT (ventana de logout forzado)
+- [ ] Secretos solo en **Secrets Manager** (`sa-east-1`)
+- [ ] Sin `.env` con secretos en el repo
+- [ ] JWT rotación documentada
 
-### Monitoreo (Observabilidad)
+### Monitoreo
 
-- [ ] Alarmas CloudWatch activas (latencia p95 > 200 ms, errores 5xx, CPU Redis)
-- [ ] Logs App Runner en `/aws/apprunner/...` (retención 14 días)
-- [ ] (Opcional) Datadog APM con agent sidecar o integración CloudWatch
+- [ ] Alarmas ALB 5xx y latencia p95
+- [ ] Logs ECS `/ecs/visor-protect-production-backend`
+- [ ] Alarma CPU Redis
 
-### Escalabilidad automática
+### Escalabilidad
 
-- [ ] App Runner: `min_size=1`, `max_size=10` (Terraform `app_runner_*`)
-- [ ] ElastiCache: `cache.t4g.micro` inicial; escalar a `cache.t4g.small` si CPU > 75% sostenido
-- [ ] Atlas: auto-scaling de storage habilitado en M10+
+- [ ] ECS `desired_count` acorde a carga
+- [ ] Redis `cache.t4g.micro` → escalar si CPU > 75%
 
 ### Calidad y seguridad
 
-- [ ] CI verde en `main` antes de tráfico real
-- [ ] `GET /health` responde `mongodb_connected` y `alert_broker: redis`
-- [ ] CORS apunta al dominio del frontend (`CORS_ORIGIN`)
-- [ ] Cookies `Secure` + `SameSite=none` en producción cross-origin
-- [ ] Demo seed **no** ejecutado en producción
+- [ ] CI verde en `main`
+- [ ] `GET /health` → `mongodb_connected`, broker Redis
+- [ ] `CORS_ORIGIN` = URL Vercel exacta
+- [ ] `VITE_API_URL` = ALB en `sa-east-1`
+- [ ] Demo seed **no** en producción
 
 ### Retención LGPD
 
-- [ ] S3 lifecycle 7 días en prefijo chat (Terraform `s3.tf`)
-- [ ] TTL MongoDB `messages` verificado en Atlas
-- [ ] Cloudinary folder `visor-protect/chat` alineado — ver [DATA_RETENTION.md](./DATA_RETENTION.md)
+- [ ] S3 lifecycle 7 días
+- [ ] TTL MongoDB `messages`
+- [ ] Ver [DATA_RETENTION.md](./DATA_RETENTION.md)
 
 ---
 
-## 5. Bootstrap manual (primera imagen)
-
-App Runner requiere al menos una imagen en ECR:
+## 5. Verificación post-deploy
 
 ```bash
-ECR_URL=$(terraform output -raw ecr_repository_url)
-aws ecr get-login-password --region sa-east-1 | docker login --username AWS --password-stdin ${ECR_URL%%/*}
-
-docker build -t visor-protect-backend .
-docker tag visor-protect-backend:latest $ECR_URL:latest
-docker push $ECR_URL:latest
-
-aws apprunner start-deployment --service-arn $(terraform output -raw app_runner_service_arn)
-```
-
-Verificar:
-
-```bash
-curl https://$(terraform output -raw app_runner_service_url | sed 's|https://||')/health
+# URL desde output Terraform o resumen GitHub Actions
+curl -s "http://<ALB_DNS>/health"
 ```
 
 ---
@@ -161,24 +134,25 @@ curl https://$(terraform output -raw app_runner_service_url | sed 's|https://||'
 ## 6. Rollback
 
 ```bash
-# Listar imágenes en ECR y redeploy tag anterior
-aws apprunner start-deployment --service-arn $APP_RUNNER_SERVICE_ARN
-# (App Runner usa la imagen configurada en la revisión activa; actualizar servicio al tag deseado si es necesario)
+aws ecs update-service \
+  --cluster visor-protect-production-backend \
+  --service visor-protect-production-backend \
+  --force-new-deployment \
+  --region sa-east-1
 ```
 
-Git revert + push a `main` dispara redeploy automático con la imagen del commit anterior.
+O workflow **Redeploy App Only** tras push de imagen anterior a ECR.
 
 ---
 
-## 7. Costos optimizados (defaults)
+## 7. Costos (referencia)
 
-| Recurso | Default | Escalar cuando |
-|---------|---------|----------------|
-| App Runner | 0.25 vCPU, 1 instancia | Latencia > 200 ms o CPU sostenida |
-| Redis | cache.t4g.micro | Alarmas CPU Redis |
-| Atlas | M10 | > 80% conexiones o IOPS |
-
-Staging: usar `environment=staging`, `app_runner_min_size=0`, Atlas M0/M2 solo para QA.
+| Recurso | Nota |
+|---------|------|
+| NAT + VPC endpoints + ALB | Fijo ~USD 55–70/mes |
+| Fargate 0.25 vCPU | ~USD 10–15/mes |
+| Redis micro | ~USD 12/mes |
+| Atlas M10 | Según plan Atlas |
 
 ---
 

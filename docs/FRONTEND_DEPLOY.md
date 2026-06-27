@@ -1,16 +1,18 @@
 # Despliegue del frontend (Vercel / Netlify)
 
-Guía para publicar la Web App React y obtener la URL de **`CORS_ORIGIN`** antes de la fase 2 (App Runner).
+Guía para publicar la Web App React y enlazarla al backend **ECS Fargate + ALB** en **`sa-east-1` (São Paulo)**.
+
+> **Región:** Todo el backend vive en `sa-east-1`. No uses `us-east-1` salvo que migres el stack completo (no recomendado).
 
 ---
 
 ## Variables de build (Vite)
 
-Se inyectan en **tiempo de build** (no en runtime). Tras cambiarlas, hay que **redeploy**.
+Se inyectan en **tiempo de build** (no en runtime). Tras cambiarlas, hay que **Redeploy** en Vercel.
 
 | Variable | Descripción | Ejemplo producción |
 |----------|-------------|-------------------|
-| `VITE_API_URL` | URL del backend (REST) | `http://xxxxx.us-east-1.elb.amazonaws.com` |
+| `VITE_API_URL` | URL del backend (REST) | `http://visor-protect-production-backend-XXXX.sa-east-1.elb.amazonaws.com` |
 | `VITE_SOCKET_URL` | URL del backend (WebSockets) | Igual que `VITE_API_URL` |
 | `VITE_SHOP_ID` | UUID del comercio (demo/bootstrap) | UUID real del shop |
 | `VITE_SHOP_NAME` | Nombre mostrado | `Mi Comercio` |
@@ -20,21 +22,21 @@ En local: ver `frontend/.env.example`.
 
 ---
 
-## Orden recomendado (con fase 2)
+## Orden recomendado
 
 ```mermaid
 flowchart LR
-  A[1. Deploy frontend Vercel] --> B[2. Copiar URL → CORS_ORIGIN]
-  B --> C[3. Fase 2 App Runner]
-  C --> D[4. VITE_API_URL = App Runner]
+  A[1. Deploy frontend Vercel] --> B[2. URL → CORS_ORIGIN en GitHub]
+  B --> C[3. ENABLE_ECS=true + deploy backend]
+  C --> D[4. ALB DNS → VITE_API_URL en Vercel]
   D --> E[5. Redeploy frontend]
 ```
 
-1. **Primer deploy** del frontend (API puede ser temporal o vacía).
-2. Copiar URL pública → GitHub Variable **`CORS_ORIGIN`** (ej. `https://visor-protect.vercel.app`).
-3. Activar fase 2 (`AWS_REGION=sa-east-1`, `ENABLE_ECS=true`).
-4. Copiar **`backend_service_url`** (ALB) → `VITE_API_URL` y `VITE_SOCKET_URL` en Vercel/Netlify.
-5. **Redeploy** del frontend.
+1. **Primer deploy** del frontend (API puede ser placeholder).
+2. Copiar URL pública → GitHub Variable **`CORS_ORIGIN`** (ej. `https://visor-protect-comercial-frontend.vercel.app`).
+3. Activar backend: `AWS_REGION=sa-east-1`, `ENABLE_ECS=true` → workflow **Production Deploy**.
+4. Copiar **`backend_service_url`** del job Terraform (resumen *Frontend — actualizar Vercel*) → `VITE_API_URL` y `VITE_SOCKET_URL`.
+5. **Redeploy** del frontend en Vercel.
 
 ---
 
@@ -44,79 +46,67 @@ flowchart LR
 
 1. [vercel.com](https://vercel.com) → **Add New → Project**.
 2. Importar `sergiolazer/VISOR_PROTECT_COMERCIAL`.
-3. **Root Directory:** dejar **`.`** (raíz del monorepo).
+3. **Root Directory:** **`.`** (raíz del monorepo).
 4. Vercel detecta `vercel.json` en la raíz.
-5. **Settings → Build & Development:** Output Directory = `dist` (o vacío para usar `vercel.json`).
 
-### 2. Build settings (verificar)
+### 2. Build settings
 
 | Campo | Valor |
 |-------|-------|
 | Framework Preset | Other |
 | Install Command | `npm ci` |
-| Build Command | *(vacío — `vercel.json` ejecuta build con `-w`)* |
-| Output Directory | `dist` (Vite escribe en raíz cuando `VERCEL=1`) |
-| Node.js Version | **24** (Settings → General → Node.js Version) |
+| Build Command | *(vacío — `vercel.json`)* |
+| Output Directory | `dist` |
+| Node.js Version | **24** |
 
-### 3. Environment Variables (primer deploy)
+### 3. Environment Variables
 
-Para obtener solo la URL de CORS, puedes usar valores temporales:
+**Primer deploy** (solo para obtener `CORS_ORIGIN`):
 
 | Key | Valor temporal |
 |-----|----------------|
-| `VITE_API_URL` | `https://placeholder.awsapprunner.com` |
-| `VITE_SOCKET_URL` | `https://placeholder.awsapprunner.com` |
+| `VITE_API_URL` | `http://localhost:3001` |
+| `VITE_SOCKET_URL` | `http://localhost:3001` |
 
-Tras fase 2, sustituir por la URL real de App Runner y **Redeploy**.
+**Tras el ALB en producción** (sustituir y Redeploy):
+
+| Key | Valor |
+|-----|-------|
+| `VITE_API_URL` | `http://<ALB_DNS>` (output `backend_service_url`) |
+| `VITE_SOCKET_URL` | Igual que `VITE_API_URL` |
 
 ### 4. Deploy
 
-**Deploy** → anotar la URL de producción, ej.:
+URL de producción típica:
 
-`https://visor-protect-comercial.vercel.app`
+`https://visor-protect-comercial-frontend.vercel.app`
 
-Esa URL es tu **`CORS_ORIGIN`** en GitHub.
+→ esa URL va en **`CORS_ORIGIN`** (GitHub Actions Variables).
 
 ### 5. Dominio propio (opcional)
 
-Vercel → Project → **Domains** → añadir `app.tudominio.com.br` → actualizar DNS.
-
-Usar `https://app.tudominio.com.br` como `CORS_ORIGIN`.
+Vercel → **Domains** → `app.tudominio.com.br` → actualizar **`CORS_ORIGIN`** con la URL final.
 
 ---
 
 ## Opción B — Netlify
 
-1. [app.netlify.com](https://app.netlify.com) → **Add new site → Import an existing project**.
-2. Conectar GitHub → mismo repositorio.
-3. Netlify lee `netlify.toml` en la raíz.
-4. **Site settings → Environment variables** — mismas `VITE_*` que arriba.
-5. Deploy → URL tipo `https://random-name.netlify.app` → **`CORS_ORIGIN`**.
-
----
-
-## Verificación local antes de deploy
-
-```bash
-npm ci
-npm run build-web
-npx serve frontend/dist
-```
-
-Abrir `http://localhost:3000` (o el puerto que indique `serve`).
+1. Importar repo; Netlify lee `netlify.toml`.
+2. Mismas variables `VITE_*` que arriba.
+3. URL del sitio → **`CORS_ORIGIN`** en GitHub.
 
 ---
 
 ## CORS y cookies
 
-El backend en App Runner usa (Terraform):
+El backend (ECS) usa:
 
 - `CORS_ORIGIN` = URL exacta del frontend (sin `/` final).
-- `COOKIE_SECURE=true`, `COOKIE_SAME_SITE=none` para cookies cross-origin.
+- `COOKIE_SECURE=true`, `COOKIE_SAME_SITE=none` en producción cross-origin.
 
-El frontend ya usa `withCredentials: true` en Socket.io y fetch con cookies.
+El frontend usa `withCredentials: true` en Socket.io y fetch.
 
-**Importante:** `CORS_ORIGIN` y la URL del navegador deben coincidir (mismo `https` y host).
+**Importante:** `CORS_ORIGIN` y la URL del navegador deben coincidir (`https` + mismo host).
 
 ---
 
@@ -124,9 +114,9 @@ El frontend ya usa `withCredentials: true` en Socket.io y fetch con cookies.
 
 - [ ] Frontend desplegado y URL pública accesible
 - [ ] `CORS_ORIGIN` en GitHub = esa URL
-- [ ] Fase 2 completada → `app_runner_service_url` disponible
-- [ ] `VITE_API_URL` + `VITE_SOCKET_URL` = URL App Runner
-- [ ] Redeploy frontend
+- [ ] Backend: `curl http://<ALB_DNS>/health` → 200
+- [ ] `VITE_API_URL` + `VITE_SOCKET_URL` = URL del ALB (`sa-east-1`)
+- [ ] Redeploy frontend en Vercel
 - [ ] Login y chat funcionan en producción
 
 ---
@@ -135,17 +125,19 @@ El frontend ya usa `withCredentials: true` en Socket.io y fetch con cookies.
 
 ### `No Output Directory named "dist" found`
 
-1. **Root Directory** debe ser **`.`** (raíz), no `frontend`. Si está en `frontend`, npm busca scripts ahí y falla.
-2. **Output Directory** = `dist` o déjalo vacío (usa `vercel.json`).
-3. **Build Command** vacío o `npm run vercel-build` — no uses `frontend/dist` como output.
-4. Con `VERCEL=1`, Vite escribe en `/dist` en la raíz (ver `frontend/vite.config.ts`).
-5. **Redeploy** tras el último push a `main`.
+1. **Root Directory** = **`.`** (raíz), no `frontend`.
+2. **Output Directory** = `dist`.
+3. **Redeploy** tras cambios en `vercel.json`.
 
-Si el dashboard tiene valores antiguos de un deploy fallido, en **Settings → General → Build & Development** pulsa **Reset** o alinea con la tabla de arriba.
+### API no responde / CORS error
+
+1. Verificar `VITE_API_URL` apunta al ALB actual (cambia si se recrea el ALB).
+2. Verificar `CORS_ORIGIN` en GitHub = URL exacta del frontend.
+3. Consola AWS en región **São Paulo (`sa-east-1`)**, no Virginia.
 
 ---
 
 ## Referencias
 
-- [PHASE_2.md](./PHASE_2.md) — App Runner y migración `us-east-1`
+- [PHASE_2.md](./PHASE_2.md) — ECS Fargate + ALB
 - [ACTIONS_SETUP.md](../.github/ACTIONS_SETUP.md) — variables GitHub

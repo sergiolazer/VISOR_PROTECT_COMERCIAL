@@ -33,7 +33,9 @@ Frontend (CORS_ORIGIN): [docs/FRONTEND_DEPLOY.md](../docs/FRONTEND_DEPLOY.md)
 | `ECS_CLUSTER_NAME` | Tras apply (redeploy manual) | Opcional |
 | `ECS_SERVICE_NAME` | Tras apply (redeploy manual) | Opcional |
 
-`ENABLE_APP_RUNNER=true` sigue activando ECS (alias legacy).
+`ENABLE_APP_RUNNER=true` es alias legacy de `ENABLE_ECS` (mismo efecto).
+
+> **Región:** Usar siempre **`sa-east-1`**. No migrar a `us-east-1` (era requisito solo de App Runner, ya no usado).
 
 ## Terraform state (artifact)
 
