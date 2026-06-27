@@ -1,6 +1,6 @@
 import type { CheckoutSessionResponse } from '@visor-protect/shared';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+import { API_URL } from './apiConfig';
 
 const fetchOptions: RequestInit = {
   credentials: 'include',

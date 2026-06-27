@@ -77,20 +77,29 @@ export default function App() {
         });
       }
 
-      const sessionFromCookie = await restoreSession();
-      if (cancelled) {
-        return;
+      try {
+        const sessionFromCookie = await restoreSession();
+        if (cancelled) {
+          return;
+        }
+
+        if (sessionFromCookie) {
+          saveAuthSession(sessionFromCookie);
+          setAuthSession(sessionFromCookie);
+        } else {
+          clearAuthSession();
+          setAuthSession(null);
+        }
+      } catch {
+        if (!cancelled) {
+          clearAuthSession();
+          setAuthSession(null);
+        }
       }
 
-      if (sessionFromCookie) {
-        saveAuthSession(sessionFromCookie);
-        setAuthSession(sessionFromCookie);
-      } else {
-        clearAuthSession();
-        setAuthSession(null);
+      if (!cancelled) {
+        setAuthLoading(false);
       }
-
-      setAuthLoading(false);
     };
 
     bootstrapAuth();

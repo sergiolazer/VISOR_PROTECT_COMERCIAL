@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+import { API_URL } from './apiConfig';
 
 export async function downloadChatExport(shopId: string): Promise<void> {
   const response = await fetch(`${API_URL}/api/chat/export/${shopId}`, {

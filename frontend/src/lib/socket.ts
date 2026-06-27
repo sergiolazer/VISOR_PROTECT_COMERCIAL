@@ -2,7 +2,7 @@ import { io, type Socket } from 'socket.io-client';
 import { SOCKET_EVENTS } from '@visor-protect/shared';
 import { getAuthUser } from './auth';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? 'http://localhost:3001';
+import { SOCKET_URL } from './apiConfig';
 
 let socketInstance: Socket | null = null;
 

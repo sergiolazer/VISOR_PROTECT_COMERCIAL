@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+import { API_URL } from './apiConfig';
 const USER_KEY = 'visor_auth_user';
 const SHOPS_KEY = 'visor_auth_shops';
 const EXPIRES_KEY = 'visor_auth_expires';

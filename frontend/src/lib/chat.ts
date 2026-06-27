@@ -2,7 +2,7 @@ import type { ChatMessageItem, ConversationItem } from '@visor-protect/shared';
 import { SOCKET_EVENTS } from '@visor-protect/shared';
 import { getSocket } from './socket';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+import { API_URL } from './apiConfig';
 
 const fetchOptions: RequestInit = {
   credentials: 'include',
