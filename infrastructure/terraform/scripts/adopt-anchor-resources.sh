@@ -97,24 +97,30 @@ purge_deprecated_sg_rules() {
   done
 }
 
-[ "${TF_VAR_enable_ecs:-false}" = "true" ] || exit 0
-
 VPC_ID="$(discover_anchor_vpc_id "$PREFIX")"
 echo "[adopt-anchor] VPC ancla: ${VPC_ID:-?}"
 [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ] || exit 0
 
-purge_route_table_if_wrong_vpc
 purge_deprecated_sg_rules
+
+SG_REDIS="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-redis")"
+purge_managed_sg_if_live_in_aws 'aws_security_group.redis' "$SG_REDIS"
+
+[ "${TF_VAR_enable_ecs:-false}" = "true" ] || {
+  echo "[adopt-anchor] enable_ecs=false — omitiendo ALB/ECS/endpoints"
+  echo "[adopt-anchor] Completado"
+  exit 0
+}
+
+purge_route_table_if_wrong_vpc
 
 SG_ALB="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-alb")"
 SG_ECS="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-ecs")"
-SG_REDIS="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-redis")"
 SG_VPCE="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-vpc-endpoints")"
 
 purge_managed_sg_if_live_in_aws 'aws_security_group.alb[0]' "$SG_ALB"
 purge_managed_sg_if_live_in_aws 'aws_security_group.ecs_tasks[0]' "$SG_ECS"
 purge_managed_sg_if_live_in_aws 'aws_security_group.vpc_endpoints[0]' "$SG_VPCE"
-purge_managed_sg_if_live_in_aws 'aws_security_group.redis' "$SG_REDIS"
 
 RT_PRIV="$(discover_private_route_table_in_vpc "$VPC_ID" "$PREFIX")"
 import_if_missing 'aws_route_table.private[0]' "$RT_PRIV" "aws ec2 describe-route-tables --route-table-ids $RT_PRIV"

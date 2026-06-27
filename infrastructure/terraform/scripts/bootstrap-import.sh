@@ -38,6 +38,24 @@ terraform_import() {
   run_terraform_import "$@"
 }
 
+assert_adopted_sg_via_data_source() {
+  local addr_base="$1"
+  local sg_id="$2"
+  local state_addr
+
+  if ! aws_value_ok "$sg_id"; then
+    return 0
+  fi
+
+  for state_addr in "$addr_base" "${addr_base}[0]"; do
+    if in_state "$state_addr"; then
+      echo "[bootstrap-import] $state_addr en AWS ($sg_id) — state rm (data source, count=0)"
+      terraform state rm "$state_addr" 2>/dev/null || true
+    fi
+  done
+  echo "[bootstrap-import] OK: $addr_base adoptado vía data source ($sg_id)"
+}
+
 assert_in_state_if_exists() {
   local addr="$1"
   local probe="$2"
@@ -727,10 +745,7 @@ if [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ]; then
     fi
   fi
   if aws_value_ok "$SG_REDIS_ASSERT"; then
-    assert_in_state_if_exists \
-      'aws_security_group.redis' \
-      "aws ec2 describe-security-groups --group-ids $SG_REDIS_ASSERT" \
-      "$SG_REDIS_ASSERT"
+    assert_adopted_sg_via_data_source 'aws_security_group.redis' "$SG_REDIS_ASSERT"
   fi
 fi
 

@@ -139,7 +139,6 @@ STABLE=(
   aws_vpc.main
   aws_subnet.private_a
   aws_subnet.private_b
-  aws_security_group.redis[0]
   aws_elasticache_subnet_group.redis
   aws_elasticache_cluster.redis
   'aws_subnet.public_a[0]'
