@@ -1,29 +1,25 @@
-# VPC ancla = la que aloja ElastiCache Redis (subnets 10.20.1/2).
-# No usar fallback al state: hay dos VPC 10.20.0.0/16 y los IDs obsoletos rompen endpoints/SG.
+# VPC ancla = VPC del cluster ElastiCache Redis en ejecución.
+# El subnet group puede referenciar subnet IDs eliminadas (p. ej. subnet-0a40bb46f7a7a2694);
+# no usar data.aws_subnet sobre esos IDs.
 
-data "aws_elasticache_subnet_group" "anchor" {
-  name = "${local.name_prefix}-redis"
+data "aws_elasticache_cluster" "anchor" {
+  cluster_id = "${local.name_prefix}-redis"
 }
 
-data "aws_subnet" "redis_anchor" {
-  for_each = toset(data.aws_elasticache_subnet_group.anchor.subnet_ids)
-  id       = each.value
+data "aws_security_group" "redis_cluster" {
+  count = length(data.aws_elasticache_cluster.anchor.security_group_ids) > 0 ? 1 : 0
+  id    = one(tolist(data.aws_elasticache_cluster.anchor.security_group_ids))
 }
 
 locals {
-  anchor_vpc_id = one(distinct([for s in values(data.aws_subnet.redis_anchor) : s.vpc_id]))
-
-  private_a_anchor_id = coalesce(
-    try(one([for s in values(data.aws_subnet.redis_anchor) : s.id if s.cidr_block == "10.20.1.0/24"]), null),
-    length(data.aws_subnets.private_a_in_anchor.ids) > 0 ? data.aws_subnets.private_a_in_anchor.ids[0] : null
-  )
-  private_b_anchor_id = coalesce(
-    try(one([for s in values(data.aws_subnet.redis_anchor) : s.id if s.cidr_block == "10.20.2.0/24"]), null),
-    length(data.aws_subnets.private_b_in_anchor.ids) > 0 ? data.aws_subnets.private_b_in_anchor.ids[0] : null
-  )
+  anchor_vpc_id = length(data.aws_security_group.redis_cluster) > 0 ? (
+    data.aws_security_group.redis_cluster[0].vpc_id
+  ) : null
 }
 
 data "aws_subnets" "private_a_in_anchor" {
+  count = local.anchor_vpc_id != null ? 1 : 0
+
   filter {
     name   = "vpc-id"
     values = [local.anchor_vpc_id]
@@ -36,6 +32,8 @@ data "aws_subnets" "private_a_in_anchor" {
 }
 
 data "aws_subnets" "private_b_in_anchor" {
+  count = local.anchor_vpc_id != null ? 1 : 0
+
   filter {
     name   = "vpc-id"
     values = [local.anchor_vpc_id]
@@ -48,6 +46,8 @@ data "aws_subnets" "private_b_in_anchor" {
 }
 
 data "aws_subnets" "public_a_anchor" {
+  count = local.anchor_vpc_id != null ? 1 : 0
+
   filter {
     name   = "vpc-id"
     values = [local.anchor_vpc_id]
@@ -60,6 +60,8 @@ data "aws_subnets" "public_a_anchor" {
 }
 
 data "aws_subnets" "public_b_anchor" {
+  count = local.anchor_vpc_id != null ? 1 : 0
+
   filter {
     name   = "vpc-id"
     values = [local.anchor_vpc_id]
@@ -71,7 +73,19 @@ data "aws_subnets" "public_b_anchor" {
   }
 }
 
+locals {
+  private_a_anchor_id = local.anchor_vpc_id != null && length(data.aws_subnets.private_a_in_anchor) > 0 && length(data.aws_subnets.private_a_in_anchor[0].ids) > 0 ? (
+    data.aws_subnets.private_a_in_anchor[0].ids[0]
+  ) : null
+
+  private_b_anchor_id = local.anchor_vpc_id != null && length(data.aws_subnets.private_b_in_anchor) > 0 && length(data.aws_subnets.private_b_in_anchor[0].ids) > 0 ? (
+    data.aws_subnets.private_b_in_anchor[0].ids[0]
+  ) : null
+}
+
 data "aws_route_tables" "private_anchor" {
+  count = local.private_a_anchor_id != null ? 1 : 0
+
   filter {
     name   = "association.subnet-id"
     values = [local.private_a_anchor_id]
@@ -79,10 +93,17 @@ data "aws_route_tables" "private_anchor" {
 }
 
 locals {
-  public_a_anchor_id = length(data.aws_subnets.public_a_anchor.ids) > 0 ? data.aws_subnets.public_a_anchor.ids[0] : null
-  public_b_anchor_id = length(data.aws_subnets.public_b_anchor.ids) > 0 ? data.aws_subnets.public_b_anchor.ids[0] : null
+  public_a_anchor_id = local.anchor_vpc_id != null && length(data.aws_subnets.public_a_anchor) > 0 && length(data.aws_subnets.public_a_anchor[0].ids) > 0 ? (
+    data.aws_subnets.public_a_anchor[0].ids[0]
+  ) : null
 
-  private_anchor_route_table_id = length(data.aws_route_tables.private_anchor.ids) > 0 ? data.aws_route_tables.private_anchor.ids[0] : null
+  public_b_anchor_id = local.anchor_vpc_id != null && length(data.aws_subnets.public_b_anchor) > 0 && length(data.aws_subnets.public_b_anchor[0].ids) > 0 ? (
+    data.aws_subnets.public_b_anchor[0].ids[0]
+  ) : null
+
+  private_anchor_route_table_id = local.private_a_anchor_id != null && length(data.aws_route_tables.private_anchor) > 0 && length(data.aws_route_tables.private_anchor[0].ids) > 0 ? (
+    data.aws_route_tables.private_anchor[0].ids[0]
+  ) : null
 
   sg_name_alb           = "${local.name_prefix}-alb"
   sg_name_ecs_tasks     = "${local.name_prefix}-ecs"
@@ -91,7 +112,7 @@ locals {
 }
 
 data "aws_security_groups" "alb_in_anchor" {
-  count = local.enable_compute ? 1 : 0
+  count = local.enable_compute && local.anchor_vpc_id != null ? 1 : 0
 
   filter {
     name   = "vpc-id"
@@ -105,7 +126,7 @@ data "aws_security_groups" "alb_in_anchor" {
 }
 
 data "aws_security_groups" "ecs_tasks_in_anchor" {
-  count = local.enable_compute ? 1 : 0
+  count = local.enable_compute && local.anchor_vpc_id != null ? 1 : 0
 
   filter {
     name   = "vpc-id"
@@ -119,6 +140,8 @@ data "aws_security_groups" "ecs_tasks_in_anchor" {
 }
 
 data "aws_security_groups" "redis_in_anchor" {
+  count = local.anchor_vpc_id != null ? 1 : 0
+
   filter {
     name   = "vpc-id"
     values = [local.anchor_vpc_id]
@@ -131,7 +154,7 @@ data "aws_security_groups" "redis_in_anchor" {
 }
 
 data "aws_security_groups" "vpc_endpoints_in_anchor" {
-  count = local.enable_compute ? 1 : 0
+  count = local.enable_compute && local.anchor_vpc_id != null ? 1 : 0
 
   filter {
     name   = "vpc-id"
@@ -145,29 +168,29 @@ data "aws_security_groups" "vpc_endpoints_in_anchor" {
 }
 
 data "aws_security_group" "alb_anchor_live" {
-  count = local.enable_compute && length(data.aws_security_groups.alb_in_anchor[0].ids) > 0 ? 1 : 0
+  count = local.enable_compute && length(data.aws_security_groups.alb_in_anchor) > 0 && length(data.aws_security_groups.alb_in_anchor[0].ids) > 0 ? 1 : 0
   id    = data.aws_security_groups.alb_in_anchor[0].ids[0]
 }
 
 data "aws_security_group" "ecs_anchor_live" {
-  count = local.enable_compute && length(data.aws_security_groups.ecs_tasks_in_anchor[0].ids) > 0 ? 1 : 0
+  count = local.enable_compute && length(data.aws_security_groups.ecs_tasks_in_anchor) > 0 && length(data.aws_security_groups.ecs_tasks_in_anchor[0].ids) > 0 ? 1 : 0
   id    = data.aws_security_groups.ecs_tasks_in_anchor[0].ids[0]
 }
 
 locals {
-  alb_sg_discovered = local.enable_compute && length(data.aws_security_groups.alb_in_anchor[0].ids) > 0 ? (
+  alb_sg_discovered = local.enable_compute && length(data.aws_security_groups.alb_in_anchor) > 0 && length(data.aws_security_groups.alb_in_anchor[0].ids) > 0 ? (
     data.aws_security_groups.alb_in_anchor[0].ids[0]
   ) : null
 
-  ecs_sg_discovered = local.enable_compute && length(data.aws_security_groups.ecs_tasks_in_anchor[0].ids) > 0 ? (
+  ecs_sg_discovered = local.enable_compute && length(data.aws_security_groups.ecs_tasks_in_anchor) > 0 && length(data.aws_security_groups.ecs_tasks_in_anchor[0].ids) > 0 ? (
     data.aws_security_groups.ecs_tasks_in_anchor[0].ids[0]
   ) : null
 
-  redis_sg_discovered = length(data.aws_security_groups.redis_in_anchor.ids) > 0 ? (
-    data.aws_security_groups.redis_in_anchor.ids[0]
+  redis_sg_discovered = length(data.aws_security_groups.redis_in_anchor) > 0 && length(data.aws_security_groups.redis_in_anchor[0].ids) > 0 ? (
+    data.aws_security_groups.redis_in_anchor[0].ids[0]
   ) : null
 
-  vpc_endpoints_sg_discovered = local.enable_compute && length(data.aws_security_groups.vpc_endpoints_in_anchor[0].ids) > 0 ? (
+  vpc_endpoints_sg_discovered = local.enable_compute && length(data.aws_security_groups.vpc_endpoints_in_anchor) > 0 && length(data.aws_security_groups.vpc_endpoints_in_anchor[0].ids) > 0 ? (
     data.aws_security_groups.vpc_endpoints_in_anchor[0].ids[0]
   ) : null
 

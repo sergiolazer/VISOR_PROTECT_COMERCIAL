@@ -1,49 +1,17 @@
 #!/usr/bin/env bash
-# VPC ancla = VPC con subnets privadas 10.20.1/2 (Redis + ECS). Ignora IDs obsoletos en subnet groups.
+# VPC ancla = VPC del cluster ElastiCache Redis en ejecución.
+# Ignora subnet IDs obsoletos en el subnet group y evita la VPC huérfana 10.20.0.0/16 duplicada.
 
 ANCHOR_PRIVATE_CIDRS=("10.20.1.0/24" "10.20.2.0/24")
+KNOWN_ORPHAN_VPC="vpc-0bf20c37978ae8d93"
 
 discover_anchor_vpc_id() {
   local prefix="$1"
-  local vpc_id cache_subnet subnet_ids redis_sg has_b
+  local vpc_id redis_sg candidate_vpcs vpc has_b
 
   [ -z "$prefix" ] && return 0
 
-  # 1) Canónico: VPC que contiene ambas subnets privadas del stack
-  vpc_id="$(aws ec2 describe-subnets \
-    --filters "Name=cidr-block,Values=${ANCHOR_PRIVATE_CIDRS[0]}" \
-    --query 'Subnets[0].VpcId' --output text 2>/dev/null || echo "")"
-  if [ -n "$vpc_id" ] && [ "$vpc_id" != "None" ]; then
-    has_b="$(aws ec2 describe-subnets \
-      --filters "Name=vpc-id,Values=${vpc_id}" "Name=cidr-block,Values=${ANCHOR_PRIVATE_CIDRS[1]}" \
-      --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")"
-    if [ -n "$has_b" ] && [ "$has_b" != "None" ]; then
-      echo "$vpc_id"
-      return 0
-    fi
-  fi
-
-  # 2) Subnets del subnet group Redis con CIDR privado (no el primer ID obsoleto)
-  cache_subnet="$(aws elasticache describe-cache-clusters \
-    --cache-cluster-id "${prefix}-redis" \
-    --query 'CacheClusters[0].CacheSubnetGroupName' --output text 2>/dev/null || echo "")"
-
-  if [ -n "$cache_subnet" ] && [ "$cache_subnet" != "None" ]; then
-    subnet_ids="$(aws elasticache describe-cache-subnet-groups \
-      --cache-subnet-group-name "$cache_subnet" \
-      --query 'SubnetIds' --output text 2>/dev/null || echo "")"
-    if [ -n "$subnet_ids" ] && [ "$subnet_ids" != "None" ]; then
-      vpc_id="$(aws ec2 describe-subnets --subnet-ids $subnet_ids \
-        --query 'Subnets[?CidrBlock==`10.20.1.0/24` || CidrBlock==`10.20.2.0/24`] | [0].VpcId' \
-        --output text 2>/dev/null || echo "")"
-      if [ -n "$vpc_id" ] && [ "$vpc_id" != "None" ]; then
-        echo "$vpc_id"
-        return 0
-      fi
-    fi
-  fi
-
-  # 3) VPC del security group de Redis en ejecución
+  # 1) VPC del security group del cluster Redis (fuente de verdad)
   redis_sg="$(aws elasticache describe-cache-clusters \
     --cache-cluster-id "${prefix}-redis" \
     --query 'CacheClusters[0].SecurityGroups[0].SecurityGroupId' --output text 2>/dev/null || echo "")"
@@ -55,7 +23,76 @@ discover_anchor_vpc_id() {
     fi
   fi
 
+  # 2) VPC con ambas subnets 10.20.1/2, excluyendo la huérfana conocida
+  candidate_vpcs="$(aws ec2 describe-subnets \
+    --filters "Name=cidr-block,Values=${ANCHOR_PRIVATE_CIDRS[0]}" \
+    --query 'Subnets[].VpcId' --output text 2>/dev/null || echo "")"
+
+  for vpc_id in $candidate_vpcs; do
+    [ -z "$vpc_id" ] || [ "$vpc_id" = "None" ] && continue
+    [ "$vpc_id" = "$KNOWN_ORPHAN_VPC" ] && continue
+    has_b="$(aws ec2 describe-subnets \
+      --filters "Name=vpc-id,Values=${vpc_id}" "Name=cidr-block,Values=${ANCHOR_PRIVATE_CIDRS[1]}" \
+      --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")"
+    if [ -n "$has_b" ] && [ "$has_b" != "None" ]; then
+      echo "$vpc_id"
+      return 0
+    fi
+  done
+
   echo ""
+}
+
+reconcile_redis_subnet_group() {
+  local prefix="$1"
+  local vpc_id subnet_a subnet_b group_name current_ids live_ids sid
+
+  [ -z "$prefix" ] && return 0
+
+  vpc_id="$(discover_anchor_vpc_id "$prefix")"
+  [ -n "$vpc_id" ] && [ "$vpc_id" != "None" ] || return 0
+
+  subnet_a="$(aws ec2 describe-subnets \
+    --filters "Name=vpc-id,Values=${vpc_id}" "Name=cidr-block,Values=${ANCHOR_PRIVATE_CIDRS[0]}" \
+    --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")"
+  subnet_b="$(aws ec2 describe-subnets \
+    --filters "Name=vpc-id,Values=${vpc_id}" "Name=cidr-block,Values=${ANCHOR_PRIVATE_CIDRS[1]}" \
+    --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")"
+
+  if [ -z "$subnet_a" ] || [ "$subnet_a" = "None" ] || [ -z "$subnet_b" ] || [ "$subnet_b" = "None" ]; then
+    echo "[vpc-anchor] Sin subnets 10.20.1/2 en VPC $vpc_id — omitir reconcile subnet group"
+    return 0
+  fi
+
+  group_name="${prefix}-redis"
+  current_ids="$(aws elasticache describe-cache-subnet-groups \
+    --cache-subnet-group-name "$group_name" \
+    --query 'CacheSubnetGroups[0].Subnets[].SubnetIdentifier' --output text 2>/dev/null || echo "")"
+
+  live_ids=""
+  for sid in $current_ids; do
+    [ -z "$sid" ] || [ "$sid" = "None" ] && continue
+    if aws ec2 describe-subnets --subnet-ids "$sid" --query 'Subnets[0].SubnetId' --output text 2>/dev/null | grep -q '^subnet-'; then
+      live_ids="$live_ids $sid"
+    else
+      echo "[vpc-anchor] Subnet obsoleta en subnet group Redis: $sid"
+    fi
+  done
+
+  if echo "$live_ids" | grep -q "$subnet_a" && echo "$live_ids" | grep -q "$subnet_b" \
+    && [ "$(echo "$live_ids" | wc -w | tr -d ' ')" -eq 2 ]; then
+    echo "[vpc-anchor] Subnet group Redis OK ($subnet_a $subnet_b)"
+    return 0
+  fi
+
+  echo "[vpc-anchor] Actualizando subnet group Redis → $subnet_a $subnet_b (VPC $vpc_id)"
+  if aws elasticache modify-cache-subnet-group \
+    --cache-subnet-group-name "$group_name" \
+    --subnet-ids "$subnet_a" "$subnet_b" >/dev/null 2>&1; then
+    echo "[vpc-anchor] Subnet group Redis actualizado"
+  else
+    echo "::warning::No se pudo actualizar subnet group Redis (¿cluster en modifying?)"
+  fi
 }
 
 sg_live_vpc_id() {
