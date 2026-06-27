@@ -214,6 +214,7 @@ fi
 bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/adopt-anchor-resources.sh"
 
 if [ "${TF_VAR_enable_ecs:-false}" = "true" ] && [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
+  for svc in secretsmanager ecr.api ecr.dkr logs; do
     svc_name="com.amazonaws.${AWS_REGION}.${svc}"
     ep_id="$(aws ec2 describe-vpc-endpoints \
       --filters "Name=vpc-id,Values=${VPC_ID}" "Name=service-name,Values=${svc_name}" \
