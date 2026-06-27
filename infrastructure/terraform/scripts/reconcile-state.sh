@@ -99,13 +99,13 @@ prune_state_by_aws_id() {
   done < <(terraform state list 2>/dev/null || true)
 }
 
-purge_sg_rules_for_compute() {
+purge_deprecated_sg_rules() {
   local rule_addr
   for rule_addr in \
     'aws_security_group_rule.ecs_tasks_from_alb[0]' \
     'aws_security_group_rule.redis_from_ecs[0]'; do
     if terraform state show -no-color "$rule_addr" >/dev/null 2>&1; then
-      echo "  state rm $rule_addr (recrear tras alinear SGs)"
+      echo "  state rm $rule_addr (reglas inline en SG — recurso obsoleto)"
       terraform state rm "$rule_addr" || true
     fi
   done
@@ -117,7 +117,7 @@ purge_compute_sgs_not_in_anchor() {
 
   [ -z "$anchor" ] || [ "$anchor" = "None" ] && return 0
 
-  for addr in 'aws_security_group.alb[0]' 'aws_security_group.ecs_tasks[0]' 'aws_security_group.redis'; do
+  for addr in 'aws_security_group.alb[0]' 'aws_security_group.ecs_tasks[0]' 'aws_security_group.redis' 'aws_security_group.vpc_endpoints[0]'; do
     if ! terraform state show -no-color "$addr" >/dev/null 2>&1; then
       continue
     fi
@@ -131,7 +131,7 @@ purge_compute_sgs_not_in_anchor() {
   done
 
   if [ "$purged" -eq 1 ]; then
-    purge_sg_rules_for_compute
+    purge_deprecated_sg_rules
   fi
 }
 
@@ -159,8 +159,7 @@ STABLE=(
   'aws_iam_role_policy.ecs_task[0]'
   'aws_ecs_cluster.backend[0]'
   'aws_ecs_service.backend[0]'
-  'aws_security_group_rule.redis_from_ecs[0]'
-  'aws_security_group_rule.ecs_tasks_from_alb[0]'
+  'aws_security_group.vpc_endpoints[0]'
 )
 
 purge_legacy_from_state
@@ -205,6 +204,8 @@ if [ -n "$ANCHOR_VPC" ] && [ "$ANCHOR_VPC" != "None" ]; then
 else
   echo "[reconcile-state] Sin VPC ancla — omitiendo purga SG compute"
 fi
+
+purge_deprecated_sg_rules
 
 while IFS= read -r addr; do
   [ -z "$addr" ] && continue

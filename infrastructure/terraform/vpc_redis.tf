@@ -49,6 +49,17 @@ resource "aws_security_group" "redis" {
   description = "Redis ElastiCache"
   vpc_id      = local.anchor_vpc_id
 
+  dynamic "ingress" {
+    for_each = local.enable_compute && local.ecs_tasks_sg_id != null ? [1] : []
+    content {
+      description     = "Redis desde ECS Fargate"
+      from_port       = 6379
+      to_port         = 6379
+      protocol        = "tcp"
+      security_groups = [local.ecs_tasks_sg_id]
+    }
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -63,20 +74,8 @@ resource "aws_security_group" "redis" {
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [description, name, name_prefix, vpc_id, egress, tags, tags_all]
+    ignore_changes  = [description, name, name_prefix, vpc_id, ingress, egress, tags, tags_all]
   }
-}
-
-resource "aws_security_group_rule" "redis_from_ecs" {
-  count = local.enable_compute && local.ecs_sg_discovered != null && local.redis_sg_discovered != null ? 1 : 0
-
-  type                     = "ingress"
-  description              = "Redis desde ECS Fargate"
-  from_port                = 6379
-  to_port                  = 6379
-  protocol                 = "tcp"
-  security_group_id        = local.redis_sg_discovered
-  source_security_group_id = local.ecs_sg_discovered
 }
 
 # --- ElastiCache Redis ---

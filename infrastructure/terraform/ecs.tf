@@ -19,7 +19,7 @@ resource "aws_cloudwatch_log_group" "ecs" {
 }
 
 resource "aws_security_group" "alb" {
-  count = local.enable_compute ? 1 : 0
+  count = local.enable_compute && local.alb_sg_discovered == null ? 1 : 0
 
   name        = local.sg_name_alb
   description = "ALB ingress HTTP/HTTPS"
@@ -59,11 +59,22 @@ resource "aws_security_group" "alb" {
 }
 
 resource "aws_security_group" "ecs_tasks" {
-  count = local.enable_compute ? 1 : 0
+  count = local.enable_compute && local.ecs_sg_discovered == null ? 1 : 0
 
   name        = local.sg_name_ecs_tasks
   description = "ECS Fargate tasks"
   vpc_id      = local.anchor_vpc_id
+
+  dynamic "ingress" {
+    for_each = local.alb_sg_id != null ? [1] : []
+    content {
+      description     = "Backend from ALB"
+      from_port       = 3001
+      to_port         = 3001
+      protocol        = "tcp"
+      security_groups = [local.alb_sg_id]
+    }
+  }
 
   egress {
     from_port   = 0
@@ -78,20 +89,8 @@ resource "aws_security_group" "ecs_tasks" {
   }
 
   lifecycle {
-    ignore_changes = [name, description, egress, vpc_id, tags, tags_all]
+    ignore_changes = [name, description, ingress, egress, vpc_id, tags, tags_all]
   }
-}
-
-resource "aws_security_group_rule" "ecs_tasks_from_alb" {
-  count = local.ecs_alb_rule_ready ? 1 : 0
-
-  type                     = "ingress"
-  description              = "Backend from ALB"
-  from_port                = 3001
-  to_port                  = 3001
-  protocol                 = "tcp"
-  security_group_id        = local.ecs_sg_discovered
-  source_security_group_id = local.alb_sg_discovered
 }
 
 resource "aws_lb" "backend" {

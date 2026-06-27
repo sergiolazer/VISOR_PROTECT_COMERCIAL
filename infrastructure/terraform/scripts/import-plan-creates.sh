@@ -196,30 +196,6 @@ import_if_planned_create \
   "${PREFIX}-backend/${PREFIX}-backend" \
   "aws ecs describe-services --cluster ${PREFIX}-backend --services ${PREFIX}-backend --query 'services[?status==\`ACTIVE\` || status==\`DRAINING\`].serviceArn | [0]' --output text"
 
-if aws_value_ok "$SG_REDIS" && aws_value_ok "$SG_ECS"; then
-  RULE_ID="$(sg_rule_import_id_ingress "$SG_REDIS" "$SG_ECS" 6379 6379)"
-  import_if_planned_create \
-    'aws_security_group_rule.redis_from_ecs[0]' \
-    "$RULE_ID" \
-    "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${SG_REDIS} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${SG_ECS}' && FromPort==\`6379\`].SecurityGroupRuleId | [0]\" --output text"
-  import_if_not_in_state \
-    'aws_security_group_rule.redis_from_ecs[0]' \
-    "$RULE_ID" \
-    "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${SG_REDIS} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${SG_ECS}' && FromPort==\`6379\`].SecurityGroupRuleId | [0]\" --output text"
-fi
-
-if aws_value_ok "$SG_ECS" && aws_value_ok "$SG_ALB"; then
-  RULE_ID="$(sg_rule_import_id_ingress "$SG_ECS" "$SG_ALB" 3001 3001)"
-  import_if_planned_create \
-    'aws_security_group_rule.ecs_tasks_from_alb[0]' \
-    "$RULE_ID" \
-    "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${SG_ECS} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${SG_ALB}' && FromPort==\`3001\`].SecurityGroupRuleId | [0]\" --output text"
-  import_if_not_in_state \
-    'aws_security_group_rule.ecs_tasks_from_alb[0]' \
-    "$RULE_ID" \
-    "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${SG_ECS} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${SG_ALB}' && FromPort==\`3001\`].SecurityGroupRuleId | [0]\" --output text"
-fi
-
 # Subnets por CIDR en VPC ancla
 if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   for spec in \
@@ -235,19 +211,9 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   done
 fi
 
-# SG ALB en VPC ancla: import aunque el plan no marque create (evita InvalidGroup.Duplicate).
-if aws_value_ok "$SG_ALB"; then
-  import_if_not_in_state 'aws_security_group.alb[0]' "$SG_ALB" "aws ec2 describe-security-groups --group-ids $SG_ALB"
-fi
+bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/adopt-anchor-resources.sh"
 
 if [ "${TF_VAR_enable_ecs:-false}" = "true" ] && [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
-  SG_VPCE="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-vpc-endpoints")"
-  import_if_not_in_state \
-    'aws_security_group.vpc_endpoints[0]' \
-    "$SG_VPCE" \
-    "aws ec2 describe-security-groups --group-ids $SG_VPCE"
-
-  for svc in secretsmanager ecr.api ecr.dkr logs; do
     svc_name="com.amazonaws.${AWS_REGION}.${svc}"
     ep_id="$(aws ec2 describe-vpc-endpoints \
       --filters "Name=vpc-id,Values=${VPC_ID}" "Name=service-name,Values=${svc_name}" \

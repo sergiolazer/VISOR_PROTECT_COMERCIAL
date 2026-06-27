@@ -302,6 +302,15 @@ reconcile_sg_for_vpc() {
   fi
 
   if aws_value_ok "$target_sg"; then
+    case "$addr" in
+      'aws_security_group.alb[0]'|'aws_security_group.ecs_tasks[0]'|'aws_security_group.vpc_endpoints[0]')
+        if in_state "$addr"; then
+          echo "[bootstrap-import] $addr en AWS ($target_sg) — state rm (data source, count=0)"
+          terraform state rm "$addr" 2>/dev/null || true
+        fi
+        return 0
+        ;;
+    esac
     reconcile_resource_id "$addr" "$target_sg"
   else
     if in_state "$addr"; then
@@ -624,33 +633,6 @@ import_compute_ecs() {
     "aws elbv2 describe-target-groups --query \"TargetGroups[?TargetGroupName=='${PREFIX}-backend'].TargetGroupArn | [0]\""
 }
 
-import_compute_sg_rules_bootstrap() {
-  local redis_sg ecs_sg alb_sg rule_id
-
-  [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ] || return 0
-  [ "${TF_VAR_enable_ecs:-false}" != "true" ] && return 0
-
-  redis_sg="$(discover_sg_in_vpc "${PREFIX}-redis")"
-  ecs_sg="$(discover_sg_in_vpc "${PREFIX}-ecs")"
-  alb_sg="$(discover_sg_in_vpc "${PREFIX}-alb")"
-
-  if aws_value_ok "$redis_sg" && aws_value_ok "$ecs_sg"; then
-    rule_id="$(sg_rule_import_id_ingress "$redis_sg" "$ecs_sg" 6379 6379)"
-    import_when_needed \
-      'aws_security_group_rule.redis_from_ecs[0]' \
-      "$rule_id" \
-      "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${redis_sg} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${ecs_sg}' && FromPort==\`6379\`].SecurityGroupRuleId | [0]\" --output text"
-  fi
-
-  if aws_value_ok "$ecs_sg" && aws_value_ok "$alb_sg"; then
-    rule_id="$(sg_rule_import_id_ingress "$ecs_sg" "$alb_sg" 3001 3001)"
-    import_when_needed \
-      'aws_security_group_rule.ecs_tasks_from_alb[0]' \
-      "$rule_id" \
-      "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${ecs_sg} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${alb_sg}' && FromPort==\`3001\`].SecurityGroupRuleId | [0]\" --output text"
-  fi
-}
-
 # --- VPC / networking (VPC = la que contiene las subnets reales por CIDR) ---
 VPC_ID="$(discover_vpc_id)"
 
@@ -688,6 +670,7 @@ if [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ]; then
   reconcile_sg_for_vpc 'aws_security_group.redis' "${PREFIX}-redis"
   reconcile_sg_for_vpc 'aws_security_group.ecs_tasks[0]' "${PREFIX}-ecs"
   reconcile_sg_for_vpc 'aws_security_group.alb[0]' "${PREFIX}-alb"
+  reconcile_sg_for_vpc 'aws_security_group.vpc_endpoints[0]' "${PREFIX}-vpc-endpoints"
 
   tg_arn="$(aws elbv2 describe-target-groups \
     --names "${PREFIX}-backend" \
@@ -701,7 +684,6 @@ if [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ]; then
 
   if [ "${TF_VAR_enable_ecs:-false}" = "true" ]; then
     reconcile_alb_attach_anchor_sg
-    import_compute_sg_rules_bootstrap
   fi
 fi
 
@@ -749,7 +731,5 @@ if [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ]; then
 fi
 
 purge_ephemeral_ecs_state "$PREFIX"
-
-import_compute_sg_rules_bootstrap
 
 echo "[bootstrap-import] Completado (import warnings: ${IMPORT_ERRORS})"

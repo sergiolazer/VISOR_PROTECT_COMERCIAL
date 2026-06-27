@@ -3,7 +3,7 @@
 # Subnets y route table resueltos por CIDR en VPC ancla (no IDs obsoletos en state).
 
 resource "aws_security_group" "vpc_endpoints" {
-  count = local.enable_compute ? 1 : 0
+  count = local.enable_compute && local.vpc_endpoints_sg_discovered == null ? 1 : 0
 
   name        = "${local.name_prefix}-vpc-endpoints"
   description = "HTTPS para VPC interface endpoints (ECS tasks)"
@@ -54,7 +54,7 @@ resource "aws_vpc_endpoint" "interface" {
   service_name        = "com.amazonaws.${var.aws_region}.${each.key}"
   vpc_endpoint_type   = "Interface"
   subnet_ids          = local.vpc_endpoint_subnet_ids
-  security_group_ids  = [aws_security_group.vpc_endpoints[0].id]
+  security_group_ids  = [local.vpc_endpoints_sg_id]
   private_dns_enabled = true
 
   tags = {

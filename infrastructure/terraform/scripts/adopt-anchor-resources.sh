@@ -57,6 +57,33 @@ purge_route_table_if_wrong_vpc() {
   fi
 }
 
+purge_managed_sg_if_live_in_aws() {
+  local addr="$1"
+  local live_sg="$2"
+
+  if ! aws_value_ok "$live_sg"; then
+    import_if_missing "$addr" "$live_sg" "aws ec2 describe-security-groups --group-ids $live_sg"
+    return 0
+  fi
+
+  if in_state "$addr"; then
+    echo "[adopt-anchor] $addr existe en AWS ($live_sg) — state rm (data source, count=0)"
+    terraform state rm "$addr" 2>/dev/null || true
+  fi
+}
+
+purge_deprecated_sg_rules() {
+  local rule_addr
+  for rule_addr in \
+    'aws_security_group_rule.ecs_tasks_from_alb[0]' \
+    'aws_security_group_rule.redis_from_ecs[0]'; do
+    if in_state "$rule_addr"; then
+      echo "[adopt-anchor] state rm $rule_addr (reglas inline en SG)"
+      terraform state rm "$rule_addr" 2>/dev/null || true
+    fi
+  done
+}
+
 [ "${TF_VAR_enable_ecs:-false}" = "true" ] || exit 0
 
 VPC_ID="$(discover_anchor_vpc_id "$PREFIX")"
@@ -64,32 +91,17 @@ echo "[adopt-anchor] VPC ancla: ${VPC_ID:-?}"
 [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ] || exit 0
 
 purge_route_table_if_wrong_vpc
+purge_deprecated_sg_rules
 
 SG_ALB="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-alb")"
 SG_ECS="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-ecs")"
 SG_REDIS="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-redis")"
 SG_VPCE="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-vpc-endpoints")"
 
-import_if_missing 'aws_security_group.alb[0]' "$SG_ALB" "aws ec2 describe-security-groups --group-ids $SG_ALB"
-import_if_missing 'aws_security_group.ecs_tasks[0]' "$SG_ECS" "aws ec2 describe-security-groups --group-ids $SG_ECS"
+purge_managed_sg_if_live_in_aws 'aws_security_group.alb[0]' "$SG_ALB"
+purge_managed_sg_if_live_in_aws 'aws_security_group.ecs_tasks[0]' "$SG_ECS"
+purge_managed_sg_if_live_in_aws 'aws_security_group.vpc_endpoints[0]' "$SG_VPCE"
 import_if_missing 'aws_security_group.redis' "$SG_REDIS" "aws ec2 describe-security-groups --group-ids $SG_REDIS"
-import_if_missing 'aws_security_group.vpc_endpoints[0]' "$SG_VPCE" "aws ec2 describe-security-groups --group-ids $SG_VPCE"
-
-if aws_value_ok "$SG_REDIS" && aws_value_ok "$SG_ECS"; then
-  RULE_ID="$(sg_rule_import_id_ingress "$SG_REDIS" "$SG_ECS" 6379 6379)"
-  import_if_missing \
-    'aws_security_group_rule.redis_from_ecs[0]' \
-    "$RULE_ID" \
-    "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${SG_REDIS} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${SG_ECS}' && FromPort==\`6379\`].SecurityGroupRuleId | [0]\" --output text"
-fi
-
-if aws_value_ok "$SG_ECS" && aws_value_ok "$SG_ALB"; then
-  RULE_ID="$(sg_rule_import_id_ingress "$SG_ECS" "$SG_ALB" 3001 3001)"
-  import_if_missing \
-    'aws_security_group_rule.ecs_tasks_from_alb[0]' \
-    "$RULE_ID" \
-    "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${SG_ECS} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${SG_ALB}' && FromPort==\`3001\`].SecurityGroupRuleId | [0]\" --output text"
-fi
 
 RT_PRIV="$(discover_private_route_table_in_vpc "$VPC_ID" "$PREFIX")"
 import_if_missing 'aws_route_table.private[0]' "$RT_PRIV" "aws ec2 describe-route-tables --route-table-ids $RT_PRIV"
