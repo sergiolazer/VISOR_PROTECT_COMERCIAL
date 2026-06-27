@@ -85,6 +85,27 @@ purge_managed_sg_if_live_in_aws() {
   done
 }
 
+ensure_ecs_sg_egress() {
+  local ecs_sg="$1"
+  local egress_count
+
+  [ -z "$ecs_sg" ] || [ "$ecs_sg" = "None" ] && return 0
+
+  egress_count="$(aws ec2 describe-security-groups --group-ids "$ecs_sg" \
+    --query 'length(SecurityGroups[0].IpPermissionsEgress)' --output text 2>/dev/null || echo "0")"
+
+  if [ "$egress_count" = "0" ] || [ "$egress_count" = "None" ]; then
+    echo "[adopt-anchor] SG ECS $ecs_sg sin egress — añadiendo 0.0.0.0/0"
+    if aws ec2 authorize-security-group-egress \
+      --group-id "$ecs_sg" \
+      --ip-permissions "IpProtocol=-1,FromPort=0,ToPort=0,IpRanges=[{CidrIp=0.0.0.0/0,Description='All outbound'}]" 2>/dev/null; then
+      echo "[adopt-anchor] OK: egress añadido a $ecs_sg"
+    else
+      echo "::warning::No se pudo añadir egress a $ecs_sg (puede existir ya)"
+    fi
+  fi
+}
+
 purge_deprecated_sg_rules() {
   local rule_addr
   for rule_addr in \
@@ -117,6 +138,16 @@ purge_route_table_if_wrong_vpc
 SG_ALB="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-alb")"
 SG_ECS="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-ecs")"
 SG_VPCE="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-vpc-endpoints")"
+
+ensure_ecs_sg_egress "$SG_ECS"
+
+if aws_value_ok "$SG_ECS"; then
+  RULE_ID="${SG_ECS}_egress_all_0_65536_0.0.0.0/0"
+  import_if_missing \
+    'aws_security_group_rule.ecs_tasks_egress_all[0]' \
+    "$RULE_ID" \
+    "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${SG_ECS} --query \"SecurityGroupRules[?IsEgress==\`true\` && CidrIpv4=='0.0.0.0/0'].SecurityGroupRuleId | [0]\" --output text"
+fi
 
 purge_managed_sg_if_live_in_aws 'aws_security_group.alb[0]' "$SG_ALB"
 purge_managed_sg_if_live_in_aws 'aws_security_group.ecs_tasks[0]' "$SG_ECS"

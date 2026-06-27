@@ -93,6 +93,19 @@ resource "aws_security_group" "ecs_tasks" {
   }
 }
 
+# SG ECS adoptado (count=0) puede quedar sin egress — las tasks no alcanzan SM/ECR/logs.
+resource "aws_security_group_rule" "ecs_tasks_egress_all" {
+  count = local.enable_compute && local.ecs_tasks_sg_id != null ? 1 : 0
+
+  type              = "egress"
+  description       = "All outbound (Secrets Manager, ECR, Redis, etc.)"
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = local.ecs_tasks_sg_id
+}
+
 resource "aws_lb" "backend" {
   count = local.enable_compute ? 1 : 0
 
