@@ -99,7 +99,7 @@ plan_has_subnet_replace() {
 }
 
 cd "$TF_DIR"
-echo "[pre-apply] scripts-rev=2025-06-27-import-plan-creates-fix"
+echo "[pre-apply] scripts-rev=2025-06-27-redis-sg-count0"
 echo "[pre-apply] enable_ecs=${TF_VAR_enable_ecs}"
 sync_state
 

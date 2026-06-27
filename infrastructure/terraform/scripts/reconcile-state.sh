@@ -117,7 +117,7 @@ purge_compute_sgs_not_in_anchor() {
 
   [ -z "$anchor" ] || [ "$anchor" = "None" ] && return 0
 
-  for addr in 'aws_security_group.alb[0]' 'aws_security_group.ecs_tasks[0]' 'aws_security_group.redis' 'aws_security_group.vpc_endpoints[0]'; do
+  for addr in 'aws_security_group.alb[0]' 'aws_security_group.ecs_tasks[0]' 'aws_security_group.redis[0]' 'aws_security_group.vpc_endpoints[0]'; do
     if ! terraform state show -no-color "$addr" >/dev/null 2>&1; then
       continue
     fi
@@ -139,7 +139,7 @@ STABLE=(
   aws_vpc.main
   aws_subnet.private_a
   aws_subnet.private_b
-  aws_security_group.redis
+  aws_security_group.redis[0]
   aws_elasticache_subnet_group.redis
   aws_elasticache_cluster.redis
   'aws_subnet.public_a[0]'

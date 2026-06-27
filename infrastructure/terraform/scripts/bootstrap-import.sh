@@ -303,11 +303,14 @@ reconcile_sg_for_vpc() {
 
   if aws_value_ok "$target_sg"; then
     case "$addr" in
-      'aws_security_group.alb[0]'|'aws_security_group.ecs_tasks[0]'|'aws_security_group.vpc_endpoints[0]')
-        if in_state "$addr"; then
-          echo "[bootstrap-import] $addr en AWS ($target_sg) — state rm (data source, count=0)"
-          terraform state rm "$addr" 2>/dev/null || true
-        fi
+      'aws_security_group.alb[0]'|'aws_security_group.ecs_tasks[0]'|'aws_security_group.vpc_endpoints[0]'|'aws_security_group.redis'|'aws_security_group.redis[0]')
+        for state_addr in "$addr" "${addr}[0]"; do
+          [ "$state_addr" = "${addr}[0]" ] && [[ "$addr" == *'['* ]] && continue
+          if in_state "$state_addr"; then
+            echo "[bootstrap-import] $state_addr en AWS ($target_sg) — state rm (data source, count=0)"
+            terraform state rm "$state_addr" 2>/dev/null || true
+          fi
+        done
         return 0
         ;;
     esac
@@ -654,7 +657,7 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   if [ -z "$SG_REDIS" ] || [ "$SG_REDIS" = "None" ]; then
     SG_REDIS="$(discover_sg_in_vpc "${PREFIX}-redis")"
   fi
-  reconcile_sg_for_vpc 'aws_security_group.redis' "${PREFIX}-redis"
+  reconcile_sg_for_vpc 'aws_security_group.redis[0]' "${PREFIX}-redis"
 
   if [ "${TF_VAR_enable_ecs:-false}" = "true" ] || [ "${TF_VAR_enable_app_runner:-false}" = "true" ]; then
     import_compute_network
@@ -668,7 +671,7 @@ fi
 
 # Reconciliación final SG/TG (evita cross-VPC entre ALB y ECS).
 if [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ]; then
-  reconcile_sg_for_vpc 'aws_security_group.redis' "${PREFIX}-redis"
+  reconcile_sg_for_vpc 'aws_security_group.redis[0]' "${PREFIX}-redis"
   reconcile_sg_for_vpc 'aws_security_group.ecs_tasks[0]' "${PREFIX}-ecs"
   reconcile_sg_for_vpc 'aws_security_group.alb[0]' "${PREFIX}-alb"
   reconcile_sg_for_vpc 'aws_security_group.vpc_endpoints[0]' "${PREFIX}-vpc-endpoints"

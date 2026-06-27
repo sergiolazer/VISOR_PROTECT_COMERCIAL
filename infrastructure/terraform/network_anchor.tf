@@ -206,7 +206,7 @@ locals {
 
   redis_sg_id = coalesce(
     local.redis_sg_discovered,
-    try(aws_security_group.redis.id, null)
+    try(aws_security_group.redis[0].id, null)
   )
 
   vpc_endpoints_sg_id = local.enable_compute ? coalesce(

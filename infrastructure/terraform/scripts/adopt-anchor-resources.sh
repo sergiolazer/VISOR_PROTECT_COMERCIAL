@@ -60,16 +60,29 @@ purge_route_table_if_wrong_vpc() {
 purge_managed_sg_if_live_in_aws() {
   local addr="$1"
   local live_sg="$2"
+  local state_addr candidates=()
+
+  if [[ "$addr" == *'['* ]]; then
+    candidates=("$addr" "${addr%%\[*}")
+  else
+    candidates=("$addr" "${addr}[0]")
+  fi
 
   if ! aws_value_ok "$live_sg"; then
-    import_if_missing "$addr" "$live_sg" "aws ec2 describe-security-groups --group-ids $live_sg"
+    if [[ "$addr" == *'['* ]]; then
+      import_if_missing "$addr" "$live_sg" "aws ec2 describe-security-groups --group-ids $live_sg"
+    else
+      import_if_missing "${addr}[0]" "$live_sg" "aws ec2 describe-security-groups --group-ids $live_sg"
+    fi
     return 0
   fi
 
-  if in_state "$addr"; then
-    echo "[adopt-anchor] $addr existe en AWS ($live_sg) — state rm (data source, count=0)"
-    terraform state rm "$addr" 2>/dev/null || true
-  fi
+  for state_addr in "${candidates[@]}"; do
+    if in_state "$state_addr"; then
+      echo "[adopt-anchor] $state_addr existe en AWS ($live_sg) — state rm (data source, count=0)"
+      terraform state rm "$state_addr" 2>/dev/null || true
+    fi
+  done
 }
 
 purge_deprecated_sg_rules() {
@@ -101,7 +114,7 @@ SG_VPCE="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-vpc-endpoints")"
 purge_managed_sg_if_live_in_aws 'aws_security_group.alb[0]' "$SG_ALB"
 purge_managed_sg_if_live_in_aws 'aws_security_group.ecs_tasks[0]' "$SG_ECS"
 purge_managed_sg_if_live_in_aws 'aws_security_group.vpc_endpoints[0]' "$SG_VPCE"
-import_if_missing 'aws_security_group.redis' "$SG_REDIS" "aws ec2 describe-security-groups --group-ids $SG_REDIS"
+purge_managed_sg_if_live_in_aws 'aws_security_group.redis' "$SG_REDIS"
 
 RT_PRIV="$(discover_private_route_table_in_vpc "$VPC_ID" "$PREFIX")"
 import_if_missing 'aws_route_table.private[0]' "$RT_PRIV" "aws ec2 describe-route-tables --route-table-ids $RT_PRIV"

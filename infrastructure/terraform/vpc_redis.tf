@@ -45,6 +45,8 @@ resource "aws_subnet" "private_b" {
 }
 
 resource "aws_security_group" "redis" {
+  count = local.redis_sg_discovered == null ? 1 : 0
+
   name        = local.sg_name_redis
   description = "Redis ElastiCache"
   vpc_id      = local.anchor_vpc_id
@@ -98,7 +100,7 @@ resource "aws_elasticache_cluster" "redis" {
   parameter_group_name = "default.redis7"
   port                 = 6379
   subnet_group_name    = aws_elasticache_subnet_group.redis.name
-  security_group_ids   = [aws_security_group.redis.id]
+  security_group_ids   = [local.redis_sg_id]
 
   lifecycle {
     ignore_changes = [

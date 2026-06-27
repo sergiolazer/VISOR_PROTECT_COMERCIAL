@@ -131,7 +131,7 @@ echo "[import-plan-creates] VPC ancla: ${VPC_ID:-?}"
 if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   purge_sg_from_state_if_wrong_vpc 'aws_security_group.alb[0]'
   purge_sg_from_state_if_wrong_vpc 'aws_security_group.ecs_tasks[0]'
-  purge_sg_from_state_if_wrong_vpc 'aws_security_group.redis'
+  purge_sg_from_state_if_wrong_vpc 'aws_security_group.redis[0]'
 fi
 
 if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
@@ -139,7 +139,6 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
 fi
 
 SG_REDIS="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-redis")"
-import_if_planned_create 'aws_security_group.redis' "$SG_REDIS" "aws ec2 describe-security-groups --group-ids $SG_REDIS"
 
 SG_ALB="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-alb")"
 import_if_planned_create 'aws_security_group.alb[0]' "$SG_ALB" "aws ec2 describe-security-groups --group-ids $SG_ALB"
