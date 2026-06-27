@@ -44,6 +44,37 @@ purge_sg_from_state_if_wrong_vpc() {
   fi
 }
 
+import_if_not_in_state() {
+  local addr="$1"
+  local aws_id="$2"
+  local probe="${3:-}"
+
+  [ -z "$aws_id" ] || [ "$aws_id" = "None" ] && return 0
+
+  if [[ "$addr" == aws_security_group* ]] && [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ] && ! sg_in_vpc "$aws_id" "$VPC_ID"; then
+    echo "[import-plan-creates] omitir $addr — SG $aws_id no está en VPC ancla ${VPC_ID}"
+    return 0
+  fi
+
+  if terraform state show -no-color "$addr" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [ -n "$probe" ] && ! aws_probe_ok "$probe"; then
+    return 0
+  fi
+
+  echo "[import-plan-creates] import (fuera del plan) $addr <- $aws_id"
+  if ! run_terraform_import "$addr" "$aws_id"; then
+    local import_ec=$?
+    if [ "$import_ec" -eq 124 ]; then
+      echo "::warning::Import de $addr excedió ${IMPORT_TIMEOUT}s"
+    else
+      echo "::warning::Import falló: $addr"
+    fi
+  fi
+}
+
 import_if_planned_create() {
   local addr="$1"
   local aws_id="$2"
@@ -108,8 +139,8 @@ fi
 SG_REDIS="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-redis")"
 import_if_planned_create 'aws_security_group.redis' "$SG_REDIS" "aws ec2 describe-security-groups --group-ids $SG_REDIS"
 
-# ALB SG: nunca importar — si no existe en VPC ancla, apply lo crea (evita SG huérfano del ALB).
-echo "[import-plan-creates] aws_security_group.alb[0]: omitido (solo create en VPC ancla)"
+SG_ALB="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-alb")"
+import_if_planned_create 'aws_security_group.alb[0]' "$SG_ALB" "aws ec2 describe-security-groups --group-ids $SG_ALB"
 
 SG_ECS="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-ecs")"
 import_if_planned_create 'aws_security_group.ecs_tasks[0]' "$SG_ECS" "aws ec2 describe-security-groups --group-ids $SG_ECS"
@@ -163,10 +194,13 @@ import_if_planned_create \
   "${PREFIX}-backend/${PREFIX}-backend" \
   "aws ecs describe-services --cluster ${PREFIX}-backend --services ${PREFIX}-backend --query 'services[?status==\`ACTIVE\` || status==\`DRAINING\`].serviceArn | [0]' --output text"
 
-SG_ALB="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-alb")"
 if aws_value_ok "$SG_REDIS" && aws_value_ok "$SG_ECS"; then
   RULE_ID="$(sg_rule_import_id_ingress "$SG_REDIS" "$SG_ECS" 6379 6379)"
   import_if_planned_create \
+    'aws_security_group_rule.redis_from_ecs[0]' \
+    "$RULE_ID" \
+    "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${SG_REDIS} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${SG_ECS}' && FromPort==\`6379\`].SecurityGroupRuleId | [0]\" --output text"
+  import_if_not_in_state \
     'aws_security_group_rule.redis_from_ecs[0]' \
     "$RULE_ID" \
     "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${SG_REDIS} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${SG_ECS}' && FromPort==\`6379\`].SecurityGroupRuleId | [0]\" --output text"
@@ -175,6 +209,10 @@ fi
 if aws_value_ok "$SG_ECS" && aws_value_ok "$SG_ALB"; then
   RULE_ID="$(sg_rule_import_id_ingress "$SG_ECS" "$SG_ALB" 3001 3001)"
   import_if_planned_create \
+    'aws_security_group_rule.ecs_tasks_from_alb[0]' \
+    "$RULE_ID" \
+    "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${SG_ECS} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${SG_ALB}' && FromPort==\`3001\`].SecurityGroupRuleId | [0]\" --output text"
+  import_if_not_in_state \
     'aws_security_group_rule.ecs_tasks_from_alb[0]' \
     "$RULE_ID" \
     "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${SG_ECS} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${SG_ALB}' && FromPort==\`3001\`].SecurityGroupRuleId | [0]\" --output text"
@@ -191,13 +229,41 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
     cidr="${spec##*|}"
     subnet_id="$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=${VPC_ID}" "Name=cidr-block,Values=${cidr}" --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")"
     import_if_planned_create "$addr" "$subnet_id" "aws ec2 describe-subnets --subnet-ids $subnet_id"
+    import_if_not_in_state "$addr" "$subnet_id" "aws ec2 describe-subnets --subnet-ids $subnet_id"
   done
 fi
 
-if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
-  purge_sg_from_state_if_wrong_vpc 'aws_security_group.alb[0]'
-  purge_sg_from_state_if_wrong_vpc 'aws_security_group.ecs_tasks[0]'
-  purge_sg_from_state_if_wrong_vpc 'aws_security_group.redis'
+# SG ALB en VPC ancla: import aunque el plan no marque create (evita InvalidGroup.Duplicate).
+if aws_value_ok "$SG_ALB"; then
+  import_if_not_in_state 'aws_security_group.alb[0]' "$SG_ALB" "aws ec2 describe-security-groups --group-ids $SG_ALB"
+fi
+
+if [ "${TF_VAR_enable_ecs:-false}" = "true" ] && [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
+  SG_VPCE="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-vpc-endpoints")"
+  import_if_not_in_state \
+    'aws_security_group.vpc_endpoints[0]' \
+    "$SG_VPCE" \
+    "aws ec2 describe-security-groups --group-ids $SG_VPCE"
+
+  for svc in secretsmanager ecr.api ecr.dkr logs; do
+    svc_name="com.amazonaws.${AWS_REGION}.${svc}"
+    ep_id="$(aws ec2 describe-vpc-endpoints \
+      --filters "Name=vpc-id,Values=${VPC_ID}" "Name=service-name,Values=${svc_name}" \
+      --query 'VpcEndpoints[?State!=`deleted`].VpcEndpointId | [0]' --output text 2>/dev/null || echo "")"
+    tf_key="${svc}"
+    import_if_not_in_state \
+      "aws_vpc_endpoint.interface[\"${tf_key}\"]" \
+      "$ep_id" \
+      "aws ec2 describe-vpc-endpoints --vpc-endpoint-ids $ep_id"
+  done
+
+  s3_ep="$(aws ec2 describe-vpc-endpoints \
+    --filters "Name=vpc-id,Values=${VPC_ID}" "Name=service-name,Values=com.amazonaws.${AWS_REGION}.s3" \
+    --query 'VpcEndpoints[?VpcEndpointType==`Gateway` && State!=`deleted`].VpcEndpointId | [0]' --output text 2>/dev/null || echo "")"
+  import_if_not_in_state \
+    'aws_vpc_endpoint.s3[0]' \
+    "$s3_ep" \
+    "aws ec2 describe-vpc-endpoints --vpc-endpoint-ids $s3_ep"
 fi
 
 echo "[import-plan-creates] Completado"

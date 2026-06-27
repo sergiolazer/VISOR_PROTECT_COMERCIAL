@@ -4,24 +4,96 @@ data "aws_elasticache_subnet_group" "anchor" {
   name = "${local.name_prefix}-redis"
 }
 
-data "aws_subnets" "anchor_from_redis" {
+data "aws_vpcs" "anchor" {
   filter {
-    name   = "subnet-id"
-    values = data.aws_elasticache_subnet_group.anchor.subnet_ids
+    name   = "cidr-block"
+    values = ["10.20.0.0/16"]
+  }
+
+  filter {
+    name   = "tag:Name"
+    values = ["${local.name_prefix}-vpc"]
   }
 }
 
-data "aws_subnet" "anchor_probe" {
-  count = length(data.aws_subnets.anchor_from_redis.ids) > 0 ? 1 : 0
-  id    = sort(data.aws_subnets.anchor_from_redis.ids)[0]
+data "aws_subnets" "private_a_anchor" {
+  count = length(data.aws_vpcs.anchor.ids) > 0 ? 1 : 0
+
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpcs.anchor.ids[0]]
+  }
+
+  filter {
+    name   = "cidr-block"
+    values = ["10.20.1.0/24"]
+  }
+}
+
+data "aws_subnets" "private_b_anchor" {
+  count = length(data.aws_vpcs.anchor.ids) > 0 ? 1 : 0
+
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpcs.anchor.ids[0]]
+  }
+
+  filter {
+    name   = "cidr-block"
+    values = ["10.20.2.0/24"]
+  }
+}
+
+data "aws_subnets" "public_a_anchor" {
+  count = length(data.aws_vpcs.anchor.ids) > 0 ? 1 : 0
+
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpcs.anchor.ids[0]]
+  }
+
+  filter {
+    name   = "cidr-block"
+    values = ["10.20.10.0/24"]
+  }
+}
+
+data "aws_subnets" "public_b_anchor" {
+  count = length(data.aws_vpcs.anchor.ids) > 0 ? 1 : 0
+
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpcs.anchor.ids[0]]
+  }
+
+  filter {
+    name   = "cidr-block"
+    values = ["10.20.11.0/24"]
+  }
+}
+
+data "aws_route_tables" "private_anchor" {
+  count = length(data.aws_subnets.private_a_anchor) > 0 && length(data.aws_subnets.private_a_anchor[0].ids) > 0 ? 1 : 0
+
+  filter {
+    name   = "association.subnet-id"
+    values = [data.aws_subnets.private_a_anchor[0].ids[0]]
+  }
 }
 
 locals {
-  anchor_vpc_id = coalesce(
-    length(data.aws_subnet.anchor_probe) > 0 ? data.aws_subnet.anchor_probe[0].vpc_id : null,
-    try(aws_subnet.private_a.vpc_id, null),
-    try(aws_vpc.main.id, null)
+  anchor_vpc_id = length(data.aws_vpcs.anchor.ids) > 0 ? data.aws_vpcs.anchor.ids[0] : coalesce(
+    try(aws_vpc.main.id, null),
+    try(aws_subnet.private_a.vpc_id, null)
   )
+
+  private_a_anchor_id = length(data.aws_subnets.private_a_anchor) > 0 && length(data.aws_subnets.private_a_anchor[0].ids) > 0 ? data.aws_subnets.private_a_anchor[0].ids[0] : try(aws_subnet.private_a.id, null)
+  private_b_anchor_id = length(data.aws_subnets.private_b_anchor) > 0 && length(data.aws_subnets.private_b_anchor[0].ids) > 0 ? data.aws_subnets.private_b_anchor[0].ids[0] : try(aws_subnet.private_b.id, null)
+
+  public_a_anchor_id = length(data.aws_subnets.public_a_anchor) > 0 && length(data.aws_subnets.public_a_anchor[0].ids) > 0 ? data.aws_subnets.public_a_anchor[0].ids[0] : try(aws_subnet.public_a[0].id, null)
+  public_b_anchor_id = length(data.aws_subnets.public_b_anchor) > 0 && length(data.aws_subnets.public_b_anchor[0].ids) > 0 ? data.aws_subnets.public_b_anchor[0].ids[0] : try(aws_subnet.public_b[0].id, null)
+
+  private_anchor_route_table_id = length(data.aws_route_tables.private_anchor) > 0 && length(data.aws_route_tables.private_anchor[0].ids) > 0 ? data.aws_route_tables.private_anchor[0].ids[0] : try(aws_route_table.private[0].id, null)
 
   sg_name_alb       = "${local.name_prefix}-alb"
   sg_name_ecs_tasks = "${local.name_prefix}-ecs"

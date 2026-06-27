@@ -621,6 +621,33 @@ import_compute_ecs() {
     "aws elbv2 describe-target-groups --query \"TargetGroups[?TargetGroupName=='${PREFIX}-backend'].TargetGroupArn | [0]\""
 }
 
+import_compute_sg_rules_bootstrap() {
+  local redis_sg ecs_sg alb_sg rule_id
+
+  [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ] || return 0
+  [ "${TF_VAR_enable_ecs:-false}" != "true" ] && return 0
+
+  redis_sg="$(discover_sg_in_vpc "${PREFIX}-redis")"
+  ecs_sg="$(discover_sg_in_vpc "${PREFIX}-ecs")"
+  alb_sg="$(discover_sg_in_vpc "${PREFIX}-alb")"
+
+  if aws_value_ok "$redis_sg" && aws_value_ok "$ecs_sg"; then
+    rule_id="$(sg_rule_import_id_ingress "$redis_sg" "$ecs_sg" 6379 6379)"
+    import_when_needed \
+      'aws_security_group_rule.redis_from_ecs[0]' \
+      "$rule_id" \
+      "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${redis_sg} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${ecs_sg}' && FromPort==\`6379\`].SecurityGroupRuleId | [0]\" --output text"
+  fi
+
+  if aws_value_ok "$ecs_sg" && aws_value_ok "$alb_sg"; then
+    rule_id="$(sg_rule_import_id_ingress "$ecs_sg" "$alb_sg" 3001 3001)"
+    import_when_needed \
+      'aws_security_group_rule.ecs_tasks_from_alb[0]' \
+      "$rule_id" \
+      "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${ecs_sg} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${alb_sg}' && FromPort==\`3001\`].SecurityGroupRuleId | [0]\" --output text"
+  fi
+}
+
 # --- VPC / networking (VPC = la que contiene las subnets reales por CIDR) ---
 VPC_ID="$(discover_vpc_id)"
 
@@ -671,26 +698,7 @@ if [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ]; then
 
   if [ "${TF_VAR_enable_ecs:-false}" = "true" ]; then
     reconcile_alb_attach_anchor_sg
-
-    ECS_SG_ADOPT="$(discover_sg_in_vpc "${PREFIX}-ecs")"
-    REDIS_SG_ADOPT="$(discover_sg_in_vpc "${PREFIX}-redis")"
-    ALB_SG_ADOPT="$(discover_sg_in_vpc "${PREFIX}-alb")"
-
-    if aws_value_ok "$REDIS_SG_ADOPT" && aws_value_ok "$ECS_SG_ADOPT"; then
-      RULE_ID="$(sg_rule_import_id_ingress "$REDIS_SG_ADOPT" "$ECS_SG_ADOPT" 6379 6379)"
-      import_when_needed \
-        'aws_security_group_rule.redis_from_ecs[0]' \
-        "$RULE_ID" \
-        "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${REDIS_SG_ADOPT} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${ECS_SG_ADOPT}' && FromPort==\`6379\`].SecurityGroupRuleId | [0]\" --output text"
-    fi
-
-    if aws_value_ok "$ECS_SG_ADOPT" && aws_value_ok "$ALB_SG_ADOPT"; then
-      RULE_ID="$(sg_rule_import_id_ingress "$ECS_SG_ADOPT" "$ALB_SG_ADOPT" 3001 3001)"
-      import_when_needed \
-        'aws_security_group_rule.ecs_tasks_from_alb[0]' \
-        "$RULE_ID" \
-        "aws ec2 describe-security-group-rules --filters Name=group-id,Values=${ECS_SG_ADOPT} --query \"SecurityGroupRules[?ReferencedGroupInfo.GroupId=='${ALB_SG_ADOPT}' && FromPort==\`3001\`].SecurityGroupRuleId | [0]\" --output text"
-    fi
+    import_compute_sg_rules_bootstrap
   fi
 fi
 
@@ -738,5 +746,7 @@ if [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "None" ]; then
 fi
 
 purge_ephemeral_ecs_state "$PREFIX"
+
+import_compute_sg_rules_bootstrap
 
 echo "[bootstrap-import] Completado (import warnings: ${IMPORT_ERRORS})"

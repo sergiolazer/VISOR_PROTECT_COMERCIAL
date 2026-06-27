@@ -98,7 +98,7 @@ plan_has_subnet_replace() {
 }
 
 cd "$TF_DIR"
-echo "[pre-apply] scripts-rev=2025-06-26-anchor-cidr-fix"
+echo "[pre-apply] scripts-rev=2025-06-26-vpc-endpoints-anchor"
 echo "[pre-apply] enable_ecs=${TF_VAR_enable_ecs}"
 sync_state
 

@@ -101,7 +101,7 @@ resource "aws_lb" "backend" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [local.alb_sg_id]
-  subnets            = [aws_subnet.public_a[0].id, aws_subnet.public_b[0].id]
+  subnets            = compact([local.public_a_anchor_id, local.public_b_anchor_id])
 
   tags = {
     Name = "${local.name_prefix}-backend-alb"
@@ -325,7 +325,7 @@ resource "aws_ecs_service" "backend" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = [aws_subnet.private_a.id, aws_subnet.private_b.id]
+    subnets          = compact([local.private_a_anchor_id, local.private_b_anchor_id])
     security_groups  = [local.ecs_tasks_sg_id]
     assign_public_ip = false
   }
