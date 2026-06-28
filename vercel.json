@@ -6,6 +6,10 @@
   "framework": null,
   "rewrites": [
     {
+      "source": "/api/media/(.*)",
+      "destination": "http://visor-protect-production-backend-1925195753.sa-east-1.elb.amazonaws.com/api/media/$1"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "http://visor-protect-production-backend-1925195753.sa-east-1.elb.amazonaws.com/api/$1"
     },

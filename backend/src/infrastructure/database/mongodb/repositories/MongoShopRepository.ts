@@ -24,13 +24,19 @@ function resolveSubscriptionFields(shop: {
   };
 }
 
-function mapShopDocument(shop: Pick<IShopDocument, '_id' | 'name' | 'city' | 'subscription' | 'createdAt'>): ShopRecord {
+function mapShopDocument(
+  shop: Pick<IShopDocument, '_id' | 'name' | 'city' | 'subscription' | 'createdAt' | 'location'>,
+): ShopRecord {
   const { status, trialEndsAt } = resolveSubscriptionFields(shop);
+  const coords = shop.location?.coordinates;
 
   return {
     id: shop._id,
     name: shop.name,
     city: shop.city,
+    ...(coords && coords.length === 2
+      ? { location: { lng: coords[0], lat: coords[1] } }
+      : {}),
     subscription: buildSubscriptionSnapshot(status, trialEndsAt),
   };
 }

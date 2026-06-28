@@ -291,7 +291,10 @@ export default function App() {
 
           {session && (
             <>
-              <PanicButton canEmitAlerts={activeSubscription.canEmitAlerts} />
+              <PanicButton
+                canEmitAlerts={activeSubscription.canEmitAlerts}
+                shopLocation={activeShop?.location ?? null}
+              />
               <ReelReportForm disabled={!activeSubscription.canEmitAlerts} />
             </>
           )}

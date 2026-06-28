@@ -4,6 +4,7 @@ export interface AuthShop {
   id: string;
   name: string;
   city: string;
+  location?: { lat: number; lng: number };
   subscription: ShopSubscriptionSnapshot;
 }
 

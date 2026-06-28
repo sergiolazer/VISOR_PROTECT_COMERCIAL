@@ -291,6 +291,7 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "NODE_ENV", value = "production" },
       { name = "PORT", value = "3001" },
       { name = "CORS_ORIGIN", value = var.cors_origin },
+      { name = "API_PUBLIC_URL", value = var.cors_origin },
       { name = "COOKIE_SECURE", value = "true" },
       { name = "COOKIE_SAME_SITE", value = "none" },
       { name = "REDIS_ENABLED", value = "true" },

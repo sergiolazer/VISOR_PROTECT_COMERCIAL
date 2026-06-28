@@ -18,6 +18,11 @@ export async function uploadChatImage(file: File): Promise<UploadImageResponse> 
     body: formData,
   });
 
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!contentType.includes('application/json')) {
+    throw new Error('Error al subir imagen — respuesta inválida del servidor');
+  }
+
   const data = await response.json();
 
   if (!response.ok) {

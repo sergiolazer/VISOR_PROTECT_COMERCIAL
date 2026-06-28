@@ -8,6 +8,22 @@ export interface PanicButtonProps {
   alertType?: AlertType;
   urgencyLevel?: UrgencyLevel;
   canEmitAlerts?: boolean;
+  /** Ubicación registrada del comercio — fallback si GPS del navegador falla o está lejos. */
+  shopLocation?: { lat: number; lng: number } | null;
+}
+
+async function resolvePanicLocation(
+  shopLocation?: { lat: number; lng: number } | null,
+): Promise<{ lat: number; lng: number }> {
+  if (shopLocation) {
+    return shopLocation;
+  }
+
+  const position = await getCurrentPosition();
+  return {
+    lat: position.coords.latitude,
+    lng: position.coords.longitude,
+  };
 }
 
 function getCurrentPosition(): Promise<GeolocationPosition> {
@@ -56,6 +72,7 @@ export function PanicButton({
   alertType = 'ROBO',
   urgencyLevel = 'CRITICAL',
   canEmitAlerts = true,
+  shopLocation = null,
 }: PanicButtonProps) {
   const [state, setState] = useState<PanicButtonState>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -63,12 +80,12 @@ export function PanicButton({
   const handleConfirm = async () => {
     setState('sending');
     try {
-      const position = await getCurrentPosition();
+      const { lat, lng } = await resolvePanicLocation(shopLocation);
       await emitEmergencyAlert({
         alert_type: alertType,
         urgency_level: urgencyLevel,
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
+        lat,
+        lng,
       });
       setState('sent');
       window.setTimeout(() => setState('idle'), 4000);
