@@ -69,3 +69,17 @@ if [ -z "$ANCHOR" ] || [ "$ANCHOR" = "None" ]; then
 fi
 
 echo "[guard-sg-rule] OK — misma VPC para regla ECS-ALB"
+
+# Bloquear recreate de egress ECS (regla ya existe en AWS vía hotfix / ensure_ecs_sg_egress).
+EGRESS_CREATE="$(terraform show -json "$PLAN_FILE" | jq -c '
+  [.resource_changes[]
+    | select(.address | test("^aws_security_group_rule\\.ecs_tasks_egress_all"))
+    | select([.change.actions[]] | any(. == "create"))
+  ] | length
+' 2>/dev/null || echo "0")"
+
+if [ "${EGRESS_CREATE:-0}" != "0" ] && [ "$EGRESS_CREATE" != "null" ]; then
+  echo "::error::El plan crea aws_security_group_rule.ecs_tasks_egress_all — egress se gestiona fuera de Terraform."
+  echo "::error::Ejecuta adopt-anchor (state rm) o actualiza ecs.tf (fix 7f20598+)."
+  exit 1
+fi

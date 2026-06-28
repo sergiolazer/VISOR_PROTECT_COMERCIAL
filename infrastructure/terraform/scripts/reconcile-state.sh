@@ -103,9 +103,11 @@ purge_deprecated_sg_rules() {
   local rule_addr
   for rule_addr in \
     'aws_security_group_rule.ecs_tasks_from_alb[0]' \
-    'aws_security_group_rule.redis_from_ecs[0]'; do
+    'aws_security_group_rule.redis_from_ecs[0]' \
+    'aws_security_group_rule.ecs_tasks_egress_all[0]' \
+    'aws_security_group_rule.ecs_tasks_egress_all'; do
     if terraform state show -no-color "$rule_addr" >/dev/null 2>&1; then
-      echo "  state rm $rule_addr (reglas inline en SG — recurso obsoleto)"
+      echo "  state rm $rule_addr (regla gestionada fuera de TF o inline en SG)"
       terraform state rm "$rule_addr" || true
     fi
   done

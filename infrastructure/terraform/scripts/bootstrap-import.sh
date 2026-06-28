@@ -311,6 +311,8 @@ reconcile_sg_for_vpc() {
         'aws_security_group.alb[0]'|'aws_security_group.ecs_tasks[0]')
           terraform state rm 'aws_security_group_rule.ecs_tasks_from_alb[0]' 2>/dev/null || true
           terraform state rm 'aws_security_group_rule.redis_from_ecs[0]' 2>/dev/null || true
+          terraform state rm 'aws_security_group_rule.ecs_tasks_egress_all[0]' 2>/dev/null || true
+          terraform state rm 'aws_security_group_rule.ecs_tasks_egress_all' 2>/dev/null || true
           ;;
       esac
     elif aws_value_ok "$target_sg" && [ "$state_sg" != "$target_sg" ]; then

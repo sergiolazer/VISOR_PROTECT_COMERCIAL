@@ -96,6 +96,14 @@ resource "aws_security_group" "ecs_tasks" {
 # Egress 0.0.0.0/0 del SG ECS adoptado: ensure_ecs_sg_egress() en adopt-anchor-resources.sh
 # (no recurso Terraform — evita InvalidPermission.Duplicate si la regla ya existe en AWS).
 
+removed {
+  from = aws_security_group_rule.ecs_tasks_egress_all
+
+  lifecycle {
+    destroy = false
+  }
+}
+
 resource "aws_lb" "backend" {
   count = local.enable_compute ? 1 : 0
 

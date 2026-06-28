@@ -99,8 +99,15 @@ plan_has_subnet_replace() {
 }
 
 cd "$TF_DIR"
-echo "[pre-apply] scripts-rev=2025-06-28-ecs-egress-script-only"
+echo "[pre-apply] scripts-rev=2025-06-28-ecs-egress-removed-block"
 echo "[pre-apply] enable_ecs=${TF_VAR_enable_ecs}"
+
+if grep -q 'resource "aws_security_group_rule" "ecs_tasks_egress_all"' ecs.tf 2>/dev/null; then
+  echo "::error::ecs.tf aún define aws_security_group_rule.ecs_tasks_egress_all"
+  echo "::error::Usa ensure_ecs_sg_egress en adopt-anchor (sin recurso TF) para evitar Duplicate."
+  exit 1
+fi
+
 sync_state
 
 set +e
@@ -214,4 +221,12 @@ if ! bash "$SCRIPTS/guard-sg-rule-plan.sh" pre-apply.plan; then
 fi
 
 echo "[pre-apply] Apply..."
+for rule_addr in \
+  'aws_security_group_rule.ecs_tasks_egress_all[0]' \
+  'aws_security_group_rule.ecs_tasks_egress_all'; do
+  if terraform state show -no-color "$rule_addr" >/dev/null 2>&1; then
+    echo "[pre-apply] state rm $rule_addr antes de apply (egress fuera de TF)"
+    terraform state rm "$rule_addr" 2>/dev/null || true
+  fi
+done
 tf_apply
