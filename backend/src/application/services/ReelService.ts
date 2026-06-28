@@ -143,6 +143,8 @@ export class ReelService {
     location: { lat: number; lng: number },
     senderShopId: string,
   ): Promise<void> {
+    await this.publishFeedToCity(city, feedItem);
+
     if (env.mongoChangeStream) {
       return;
     }
@@ -166,5 +168,11 @@ export class ReelService {
       senderShopId,
       city,
     });
+  }
+
+  /** Feed en vivo para todos los clientes en la sala de ciudad (Safety Reel). */
+  async publishFeedToCity(city: string, feedItem: FeedEventItem): Promise<void> {
+    await this.cityRoomService.broadcastToCity(city, SOCKET_EVENTS.FEED_UPDATES, feedItem);
+    await this.cityRoomService.broadcastToCity(city, SOCKET_EVENTS.REPORT_CREATED, feedItem);
   }
 }

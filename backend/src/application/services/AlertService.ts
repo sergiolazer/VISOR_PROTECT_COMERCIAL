@@ -170,6 +170,7 @@ export class AlertService {
       excludeSocketId: input.excludeSocketId,
       skipBroadcast: input.isLegacyReplay,
       legacyFeedItem: input.isLegacyReplay ? undefined : feedItem,
+      feedItem: input.isLegacyReplay ? undefined : feedItem,
     });
 
     return {

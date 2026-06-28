@@ -28,7 +28,7 @@ function ReelCard({
   const isOwnReport = event.sender_shop_id === currentShopId;
 
   return (
-    <article className="rounded-xl border border-slate-700/80 bg-slate-900/80 p-4 shadow-lg">
+    <article className="overflow-hidden rounded-xl border border-slate-700/80 bg-slate-900/80 p-4 shadow-lg">
       <div className="flex gap-3">
         <div
           className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-2xl"
@@ -37,16 +37,18 @@ function ReelCard({
           {getReelIcon(event.icon_type)}
         </div>
 
-        <div className="min-w-0 flex-1">
-          <p className="text-sm text-slate-100 leading-snug">
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <p className="break-words text-sm text-slate-100 leading-snug [overflow-wrap:anywhere]">
             {event.category
               ? QUICK_REPORT_LABELS[event.category]
               : event.description}
           </p>
           {event.category && (
-            <p className="mt-1 text-xs text-slate-500">{event.description}</p>
+            <p className="mt-1 break-words text-xs text-slate-500 [overflow-wrap:anywhere]">
+              {event.description}
+            </p>
           )}
-          <p className="mt-2 text-xs text-slate-400">
+          <p className="mt-2 truncate text-xs text-slate-400">
             {event.sender_shop_name} · {formatEventTime(event.created_at)}
           </p>
 
@@ -110,7 +112,7 @@ export function SafetyReel({
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[70vh] lg:max-h-none">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3 max-h-[70vh] lg:max-h-none">
         {events.length === 0 ? (
           <p className="text-center text-sm text-slate-500 py-8">
             No hay reportes para el filtro seleccionado

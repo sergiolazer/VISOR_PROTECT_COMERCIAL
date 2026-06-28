@@ -34,7 +34,32 @@ function prependFeedItem(current: FeedEventItem[], item: FeedEventItem): FeedEve
   return [item, ...current];
 }
 
-export function useSafetyReel(shopId: string | null, cityName: string | null = null) {
+/** Evita que FEED_HISTORY (re-join) borre eventos recién recibidos por socket. */
+function mergeFeedEvents(current: FeedEventItem[], incoming: FeedEventItem[]): FeedEventItem[] {
+  const merged = new Map<string, FeedEventItem>();
+
+  for (const item of incoming) {
+    merged.set(item.id, item);
+  }
+
+  for (const item of current) {
+    const existing = merged.get(item.id);
+    if (!existing) {
+      merged.set(item.id, item);
+      continue;
+    }
+
+    const liveIsNewer =
+      new Date(item.created_at).getTime() >= new Date(existing.created_at).getTime();
+    if (liveIsNewer || item.confirmation_count > existing.confirmation_count) {
+      merged.set(item.id, item);
+    }
+  }
+
+  return sortByRelevance([...merged.values()]);
+}
+
+export function useSafetyReel(shopId: string | null, _cityName: string | null = null) {
   const [events, setEvents] = useState<FeedEventItem[]>([]);
   const [filter, setFilter] = useState<FeedFilter>('all');
   const [activePanic, setActivePanic] = useState<FeedEventItem | null>(null);
@@ -43,7 +68,7 @@ export function useSafetyReel(shopId: string | null, cityName: string | null = n
     const socket = getSocket();
 
     const onFeedHistory = (data: { events: FeedEventItem[] }) => {
-      setEvents(data.events);
+      setEvents((current) => mergeFeedEvents(current, data.events));
     };
 
     const onFeedUpdate = (item: FeedEventItem) => {
@@ -100,29 +125,6 @@ export function useSafetyReel(shopId: string | null, cityName: string | null = n
       unbind();
     };
   }, []);
-
-  /** Re-join city on connect so FEED_HISTORY / live updates stay in sync. */
-  useEffect(() => {
-    if (!shopId || !cityName) {
-      return;
-    }
-
-    const socket = getSocket();
-
-    const joinCityRoom = () => {
-      socket.emit(SOCKET_EVENTS.JOIN_CITY, { city_name: cityName });
-    };
-
-    if (socket.connected) {
-      joinCityRoom();
-    }
-
-    socket.on('connect', joinCityRoom);
-
-    return () => {
-      socket.off('connect', joinCityRoom);
-    };
-  }, [shopId, cityName]);
 
   const filteredEvents = useMemo(
     () => sortByRelevance(applyFilter(events, filter)),

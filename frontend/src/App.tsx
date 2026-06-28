@@ -51,7 +51,7 @@ export default function App() {
     confirmReport,
     activePanic,
     dismissPanic,
-  } = useSafetyReel(session?.shopId ?? null, session?.cityName ?? shopCity);
+  } = useSafetyReel(authSession?.user.shopId ?? null, session?.cityName ?? shopCity);
 
   const handleLogout = useCallback(async () => {
     try {
