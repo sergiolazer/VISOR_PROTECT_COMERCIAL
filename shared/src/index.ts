@@ -4,6 +4,7 @@ export * from './types/alertFilterTelemetry';
 export * from './types/chat';
 export * from './types/events';
 export * from './constants/alertDispatch';
+export * from './constants/demoGeo';
 export * from './validation/chatSchema';
 export * from './validation/alertSchema';
 export * from './validation/alertEventSchema';

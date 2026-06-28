@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
-import type { NetworkShopPin } from '@visor-protect/shared';
+import { DEMO_MAP_CENTER, type NetworkShopPin } from '@visor-protect/shared';
 import { useNetworkMap } from '../hooks/useNetworkMap';
 import 'leaflet/dist/leaflet.css';
 
@@ -9,7 +9,7 @@ interface NetworkMapProps {
   currentShopId: string;
 }
 
-const SAO_PAULO_CENTER: L.LatLngExpression = [-23.5614, -46.6553];
+const DEFAULT_MAP_CENTER: L.LatLngExpression = [DEMO_MAP_CENTER.lat, DEMO_MAP_CENTER.lng];
 
 function createMarkerIcon(shop: NetworkShopPin, isOwnShop: boolean): L.DivIcon {
   const online = shop.is_online;
@@ -34,7 +34,7 @@ function createMarkerIcon(shop: NetworkShopPin, isOwnShop: boolean): L.DivIcon {
 function fitMapToShops(map: L.Map, shops: NetworkShopPin[], currentShopId: string): void {
   const locatedShops = shops.filter((shop) => shop.location);
   if (locatedShops.length === 0) {
-    map.setView(SAO_PAULO_CENTER, 14);
+    map.setView(DEFAULT_MAP_CENTER, 14);
     return;
   }
 

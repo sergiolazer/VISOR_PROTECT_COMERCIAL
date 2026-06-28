@@ -10,6 +10,7 @@ import {
   SHOP_B_ID,
   SHOP_C_ID,
   SHOP_A_LOCATION,
+  DEMO_CITY,
 } from '../../test-utils/demoShopsFixture';
 
 describe('GeofenceService (integración)', () => {
@@ -36,7 +37,7 @@ describe('GeofenceService (integración)', () => {
       lat: SHOP_A_LOCATION.lat,
       lng: SHOP_A_LOCATION.lng,
       senderShopId: SHOP_A_ID,
-      city: 'São Paulo',
+      city: DEMO_CITY,
     });
 
     expect(shopIds).toContain(SHOP_B_ID);
@@ -49,8 +50,8 @@ describe('GeofenceService (integración)', () => {
       { _id: SHOP_C_ID },
       {
         $set: {
-          city: 'São Paulo',
-          location: { type: 'Point', coordinates: [-46.5000, -23.5000] },
+          city: DEMO_CITY,
+          location: { type: 'Point', coordinates: [-48.5000, -26.8500] },
         },
       },
     );
@@ -59,7 +60,7 @@ describe('GeofenceService (integración)', () => {
       lat: SHOP_A_LOCATION.lat,
       lng: SHOP_A_LOCATION.lng,
       senderShopId: SHOP_A_ID,
-      city: 'São Paulo',
+      city: DEMO_CITY,
       radiusMeters: 500,
     });
 

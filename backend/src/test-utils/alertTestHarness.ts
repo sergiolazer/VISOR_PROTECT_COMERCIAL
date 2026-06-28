@@ -6,7 +6,7 @@ import type { IAlertBroker } from '../domain/services/IAlertBroker';
 import { AlertDispatchService } from '../application/services/AlertDispatchService';
 import { GeofenceService } from '../application/services/GeofenceService';
 import { MongoShopRepository } from '../infrastructure/database/mongodb/repositories/MongoShopRepository';
-import { SHOP_A_ID } from './demoShopsFixture';
+import { SHOP_A_ID, SHOP_A_LOCATION, DEMO_CITY } from './demoShopsFixture';
 
 export interface AlertTestHarness {
   url: string;
@@ -112,11 +112,11 @@ export function buildTestFeedItem(eventId: string): FeedEventItem {
   return {
     id: eventId,
     event_type: 'PANIC_ALERT',
-    city: 'São Paulo',
+    city: DEMO_CITY,
     sender_shop_id: SHOP_A_ID,
     sender_shop_name: 'Comercio Demo Centro',
     description: 'Alerta ROBO — CRITICAL',
-    location: { lat: -23.5614, lng: -46.6553 },
+    location: SHOP_A_LOCATION,
     alert_type: 'ROBO',
     urgency_level: 'CRITICAL',
     icon_type: 'suspicious',

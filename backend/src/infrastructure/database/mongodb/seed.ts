@@ -1,11 +1,13 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import { DEMO_CITY } from '@visor-protect/shared';
 import { connectMongoDB, disconnectMongoDB } from './connection';
 import { UserModel } from './models/User.model';
 import { ShopModel } from './models/Shop.model';
 import { EventLogModel } from './models/EventLog.model';
 import { ConversationModel } from './models/Conversation.model';
 import { MessageModel } from './models/Message.model';
+import { DEMO_SHOPS_GEO_PATCH } from './demoShopGeo';
 
 const DEMO_CONVERSATION_ID = '20000000-0000-4000-8000-000000000001';
 
@@ -13,35 +15,14 @@ const DEMO_OWNER_ID = new mongoose.Types.ObjectId('000000000000000000000099');
 const DEMO2_OWNER_ID = new mongoose.Types.ObjectId('000000000000000000000098');
 const DEMO_PASSWORD = 'demo1234';
 
-const DEMO_SHOPS = [
-  {
-    _id: '00000000-0000-4000-8000-000000000001',
-    name: 'Comercio Demo Centro',
-    address: 'Av. Paulista 1000, São Paulo',
-    city: 'São Paulo',
-    location: { type: 'Point' as const, coordinates: [-46.6553, -23.5614] },
-    subscribed_event_types: ['ROBO', 'ACCIDENTE', 'SOSPECHOSO', 'INTRUSION', 'VANDALISMO', 'EMERGENCIA'],
-    subscription: { status: 'ACTIVE' as const, trialEndsAt: new Date('2099-01-01') },
-  },
-  {
-    _id: '00000000-0000-4000-8000-000000000002',
-    name: 'Comercio Demo Cercano',
-    address: 'Av. Paulista 1050, São Paulo',
-    city: 'São Paulo',
-    location: { type: 'Point' as const, coordinates: [-46.6548, -23.5610] },
-    subscribed_event_types: ['ROBO', 'EMERGENCIA'],
-    subscription: { status: 'ACTIVE' as const, trialEndsAt: new Date('2099-01-01') },
-  },
-  {
-    _id: '00000000-0000-4000-8000-000000000003',
-    name: 'Comercio Demo Lejano',
-    address: 'Rua Augusta 500, São Paulo',
-    city: 'Rio de Janeiro',
-    location: { type: 'Point' as const, coordinates: [-43.1729, -22.9068] },
-    subscribed_event_types: ['ROBO', 'ACCIDENTE', 'SOSPECHOSO', 'INTRUSION', 'VANDALISMO', 'EMERGENCIA'],
-    subscription: { status: 'ACTIVE' as const, trialEndsAt: new Date('2099-01-01') },
-  },
-];
+const DEMO_SHOPS = DEMO_SHOPS_GEO_PATCH.map((shop) => ({
+  ...shop,
+  subscribed_event_types:
+    shop._id === '00000000-0000-4000-8000-000000000002'
+      ? (['ROBO', 'EMERGENCIA'] as const)
+      : (['ROBO', 'ACCIDENTE', 'SOSPECHOSO', 'INTRUSION', 'VANDALISMO', 'EMERGENCIA'] as const),
+  subscription: { status: 'ACTIVE' as const, trialEndsAt: new Date('2099-01-01') },
+}));
 
 async function seed(): Promise<void> {
   await connectMongoDB();
@@ -89,7 +70,7 @@ async function seed(): Promise<void> {
       _id: '10000000-0000-4000-8000-000000000001',
       shop_id: DEMO_SHOPS[0]._id,
       sender_shop_name: DEMO_SHOPS[0].name,
-      city: 'São Paulo',
+      city: DEMO_CITY,
       type: 'REEL_REPORT',
       category: 'SUSPICIOUS_PERSON',
       status: 'ACTIVE',
@@ -104,7 +85,7 @@ async function seed(): Promise<void> {
       _id: '10000000-0000-4000-8000-000000000002',
       shop_id: DEMO_SHOPS[1]._id,
       sender_shop_name: DEMO_SHOPS[1].name,
-      city: 'São Paulo',
+      city: DEMO_CITY,
       type: 'REEL_REPORT',
       category: 'VEHICLE',
       status: 'ACTIVE',
@@ -142,6 +123,7 @@ async function seed(): Promise<void> {
   });
 
   console.log('[Seed] MongoDB Atlas poblado con datos demo');
+  console.log(`[Seed] Ciudad: ${DEMO_CITY}`);
   console.log('[Seed] Usuario 1: demo@visorprotect.local / demo1234 (Comercio Demo Centro)');
   console.log('[Seed] Usuario 2: demo2@visorprotect.local / demo1234 (Comercio Demo Cercano)');
   await disconnectMongoDB();

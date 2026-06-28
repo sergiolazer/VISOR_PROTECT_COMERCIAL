@@ -18,6 +18,7 @@ import {
   SHOP_A_ID,
   SHOP_B_ID,
   SHOP_A_LOCATION,
+  DEMO_CITY,
 } from '../../test-utils/demoShopsFixture';
 
 function buildEvent(overrides: Partial<AlertEventRecord> = {}): AlertEventRecord {
@@ -25,7 +26,7 @@ function buildEvent(overrides: Partial<AlertEventRecord> = {}): AlertEventRecord
     id: randomUUID(),
     shopId: SHOP_A_ID,
     senderShopName: 'Comercio Demo Centro',
-    city: 'São Paulo',
+    city: DEMO_CITY,
     type: 'INTRUSION',
     severity: 'MEDIA',
     location: SHOP_A_LOCATION,

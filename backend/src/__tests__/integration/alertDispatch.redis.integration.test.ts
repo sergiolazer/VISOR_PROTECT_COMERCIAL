@@ -16,6 +16,7 @@ import {
   SHOP_A_ID,
   SHOP_B_ID,
   SHOP_A_LOCATION,
+  DEMO_CITY,
 } from '../../test-utils/demoShopsFixture';
 import { createAlertBroker } from '../../infrastructure/redis/createAlertBroker';
 
@@ -89,7 +90,7 @@ describe('AlertDispatch A → B (Redis multi-node)', () => {
       lat: SHOP_A_LOCATION.lat,
       lng: SHOP_A_LOCATION.lng,
       senderShopId: SHOP_A_ID,
-      city: 'São Paulo',
+      city: DEMO_CITY,
       urgencyLevel: 'CRITICAL',
     });
 
