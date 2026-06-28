@@ -9,7 +9,7 @@ import { MessageModel } from './models/Message.model';
 
 const DEMO_CONVERSATION_ID = '20000000-0000-4000-8000-000000000001';
 
-const DEMO_OWNER_ID = new mongoose.Types.ObjectId('00000000-0000-4000-8000-000000000099');
+const DEMO_OWNER_ID = new mongoose.Types.ObjectId('000000000000000000000099');
 const DEMO_PASSWORD = 'demo1234';
 
 const DEMO_SHOPS = [
