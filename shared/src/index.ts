@@ -16,3 +16,4 @@ export * from './utils/quickReport';
 export * from './utils/shopSubscription';
 export * from './types/shopSubscription';
 export * from './types/billing';
+export * from './types/network';

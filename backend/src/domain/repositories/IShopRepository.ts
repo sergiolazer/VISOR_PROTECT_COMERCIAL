@@ -1,4 +1,5 @@
 import type { ShopSubscriptionStatus } from '@visor-protect/shared';
+import type { NetworkShopPin } from '@visor-protect/shared';
 import type { CreateShopParams, ShopRecord } from '../entities/ShopRecord';
 
 export interface FindNearbyShopsParams {
@@ -22,4 +23,5 @@ export interface IShopRepository {
   updateSocketId(shopId: string, socketId: string | null): Promise<void>;
   clearSocketId(socketId: string): Promise<void>;
   findNearby(params: FindNearbyShopsParams): Promise<ShopRecord[]>;
+  findNetworkByCity(city: string): Promise<NetworkShopPin[]>;
 }

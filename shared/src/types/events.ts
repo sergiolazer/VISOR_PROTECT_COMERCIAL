@@ -102,6 +102,9 @@ export const SOCKET_EVENTS = {
   CREATE_ALERT_EVENT: 'create_alert_event',
   ALERT_EVENT_ACK: 'alert_event_ack',
   ALERT_PUSH: 'alert_push',
+
+  NETWORK_SNAPSHOT: 'network_snapshot',
+  NETWORK_PRESENCE: 'network_presence',
 } as const;
 
 export { ALERT_RADIUS_METERS, CRITICAL_ALERT_RADIUS_METERS } from '../constants/alertDispatch';

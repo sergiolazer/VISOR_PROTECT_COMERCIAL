@@ -7,6 +7,7 @@ import { ReportQuickAction } from './components/ReportQuickAction';
 import { ReelReportForm } from './components/ReelReportForm';
 import { SafetyReel } from './components/SafetyReel';
 import { ChatBox } from './components/ChatBox';
+import { NetworkMap } from './components/NetworkMap';
 import { TrialBanner } from './components/TrialBanner';
 import { shopConfig } from './config/shopConfig';
 import { useSafetyReel } from './hooks/useSafetyReel';
@@ -256,7 +257,7 @@ export default function App() {
       {session && <ReportQuickAction cityName={session.cityName} />}
 
       <div className="min-h-screen xl:grid xl:grid-cols-[1fr_340px_360px]">
-        <main className="flex flex-col items-center justify-center gap-8 p-6 pb-28 border-b border-slate-800 xl:border-b-0">
+        <main className="flex flex-col items-center justify-center gap-6 p-6 pb-28 border-b border-slate-800 xl:border-b-0">
           <header className="text-center">
             <h1 className="text-3xl font-bold text-white mb-2">Visor Protect Comercio</h1>
             <p className="text-slate-400 text-sm">
@@ -296,6 +297,7 @@ export default function App() {
                 shopLocation={activeShop?.location ?? null}
               />
               <ReelReportForm disabled={!activeSubscription.canEmitAlerts} />
+              <NetworkMap cityName={displayCity} currentShopId={session.shopId} />
             </>
           )}
         </main>

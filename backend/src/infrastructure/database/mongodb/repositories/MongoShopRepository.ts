@@ -1,6 +1,7 @@
 import {
   buildSubscriptionSnapshot,
   createTrialSubscription,
+  type NetworkShopPin,
   type ShopSubscriptionStatus,
 } from '@visor-protect/shared';
 import type { IShopRepository } from '../../../../domain/repositories/IShopRepository';
@@ -130,5 +131,33 @@ export class MongoShopRepository implements IShopRepository {
     const shops = await ShopModel.find(query).limit(50).lean();
 
     return shops.map((shop) => mapShopDocument(shop));
+  }
+
+  async findNetworkByCity(city: string): Promise<NetworkShopPin[]> {
+    const normalizedCity = city.trim();
+    if (!normalizedCity) {
+      return [];
+    }
+
+    const shops = await ShopModel.find({ city: normalizedCity })
+      .select('_id name city location socket_id')
+      .lean();
+
+    return shops.flatMap((shop) => {
+      const coords = shop.location?.coordinates;
+      if (!coords || coords.length !== 2) {
+        return [];
+      }
+
+      return [
+        {
+          id: shop._id,
+          name: shop.name,
+          city: shop.city,
+          location: { lng: coords[0], lat: coords[1] },
+          is_online: Boolean(shop.socket_id),
+        },
+      ];
+    });
   }
 }

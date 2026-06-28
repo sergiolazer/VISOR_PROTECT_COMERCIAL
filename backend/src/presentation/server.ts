@@ -47,6 +47,8 @@ import { MercadoPagoBillingService } from '../infrastructure/billing/MercadoPago
 import { BillingWebhookService } from '../application/services/BillingWebhookService';
 import { BillingController } from '../presentation/controllers/billingController';
 import { createBillingRouter, createBillingWebhookRouter } from '../presentation/routes/billingRoutes';
+import { NetworkController } from '../presentation/controllers/networkController';
+import { createNetworkRouter } from '../presentation/routes/networkRoutes';
 
 async function bootstrap(): Promise<void> {
   validateProductionConfig();
@@ -94,6 +96,8 @@ async function bootstrap(): Promise<void> {
     auditLogRepository,
   );
   const chatController = new ChatController(chatService, chatExportService, authService);
+  const alertSenderValidator = new AlertSenderValidator(shopRepository);
+  const networkController = new NetworkController(shopRepository, alertSenderValidator);
 
   app.get('/health', (_req, res) => {
     res.json({
@@ -111,6 +115,7 @@ async function bootstrap(): Promise<void> {
   app.use('/api/media', createMediaRouter(mediaController));
   app.use('/api/chat', createChatRouter(authService, chatController));
   app.use('/api/messages', createMessagesRouter(authService, chatController));
+  app.use('/api/network', createNetworkRouter(authService, networkController));
 
   const httpServer = http.createServer(app);
   const io = createSocketServer(httpServer, authService, shopRepository);
@@ -125,7 +130,6 @@ async function bootstrap(): Promise<void> {
   );
   await alertDispatchService.start();
 
-  const alertSenderValidator = new AlertSenderValidator(shopRepository);
   const cityRoomService = new CityRoomService(io);
   const shopContextService = new ShopContextService((id) => shopRepository.findById(id));
 

@@ -3,6 +3,7 @@ import { joinCitySchema, SOCKET_EVENTS } from '@visor-protect/shared';
 import type { ReelService } from '../ReelService';
 import type { ICityRoomService } from '../../../domain/services/ICityRoomService';
 import type { AlertSenderValidator } from '../../validators/AlertSenderValidator';
+import type { IShopRepository } from '../../../domain/repositories/IShopRepository';
 import { ShopContextService } from '../ShopContextService';
 import { emitSocketError } from './socketErrorHandler';
 
@@ -11,6 +12,7 @@ export interface JoinCityHandlerDeps {
   cityRoomService: ICityRoomService;
   alertSenderValidator: AlertSenderValidator;
   shopContextService: ShopContextService;
+  shopRepository: IShopRepository;
 }
 
 export function registerJoinCityHandler(socket: Socket, deps: JoinCityHandlerDeps): void {
@@ -42,6 +44,27 @@ export function registerJoinCityHandler(socket: Socket, deps: JoinCityHandlerDep
         city: authorizedCity,
         events: feedHistory,
       });
+
+      const networkShops = await deps.shopRepository.findNetworkByCity(authorizedCity);
+      socket.emit(SOCKET_EVENTS.NETWORK_SNAPSHOT, {
+        city: authorizedCity,
+        shops: networkShops,
+      });
+
+      const ownShop = networkShops.find((shop) => shop.id === socket.data.shopId);
+      if (ownShop) {
+        await deps.cityRoomService.broadcastToCity(
+          authorizedCity,
+          SOCKET_EVENTS.NETWORK_PRESENCE,
+          {
+            shop_id: ownShop.id,
+            shop_name: ownShop.name,
+            is_online: true,
+            location: ownShop.location,
+          },
+          socket.id,
+        );
+      }
     } catch (error) {
       emitSocketError(socket, error, 'Error al unirse a la sala de ciudad');
     }
