@@ -13,7 +13,7 @@ export async function fetchConversations(): Promise<ConversationItem[]> {
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.message ?? 'Error al cargar conversaciones');
+    throw new Error(data.message ?? 'Erro ao carregar conversas');
   }
 
   return (data.conversations ?? []) as ConversationItem[];
@@ -24,7 +24,7 @@ export async function fetchMessages(conversationId: string): Promise<ChatMessage
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.message ?? 'Error al cargar mensajes');
+    throw new Error(data.message ?? 'Erro ao carregar mensagens');
   }
 
   return (data.messages ?? []) as ChatMessageItem[];
@@ -41,7 +41,7 @@ export async function createDirectConversation(targetShopId: string): Promise<Co
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.message ?? 'Error al crear conversación');
+    throw new Error(data.message ?? 'Erro ao criar conversa');
   }
 
   return data as ConversationItem;
@@ -113,7 +113,7 @@ export function subscribeToChatEvents(handlers: {
 }
 
 export function formatChatTime(isoDate: string): string {
-  return new Intl.DateTimeFormat('es', {
+  return new Intl.DateTimeFormat('pt-BR', {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(isoDate));
@@ -125,10 +125,10 @@ export function getConversationTitle(
 ): string {
   const otherIds = conversation.participants.filter((id) => id !== currentShopId);
   if (otherIds.length === 0) {
-    return 'Conversación';
+    return 'Conversa';
   }
 
   return otherIds
-    .map((id) => conversation.participant_names[id] ?? 'Comercio')
+    .map((id) => conversation.participant_names[id] ?? 'Comércio')
     .join(', ');
 }

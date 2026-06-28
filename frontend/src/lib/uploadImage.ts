@@ -20,13 +20,13 @@ export async function uploadChatImage(file: File): Promise<UploadImageResponse> 
 
   const contentType = response.headers.get('content-type') ?? '';
   if (!contentType.includes('application/json')) {
-    throw new Error('Error al subir imagen — respuesta inválida del servidor');
+    throw new Error('Erro ao enviar imagem — resposta inválida do servidor');
   }
 
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.message ?? 'Error al subir imagen');
+    throw new Error(data.message ?? 'Erro ao enviar imagem');
   }
 
   return data as UploadImageResponse;

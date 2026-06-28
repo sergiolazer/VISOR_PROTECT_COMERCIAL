@@ -9,7 +9,7 @@ export const CATEGORY_TO_ICON: Record<QuickReportCategory, ReelIconType> = {
 };
 
 export function getQuickReportDescription(category: QuickReportCategory): string {
-  return `Reporte rápido: ${QUICK_REPORT_LABELS[category]}`;
+  return `Relato rápido: ${QUICK_REPORT_LABELS[category]}`;
 }
 
 export function getCategoryIconType(category: QuickReportCategory): ReelIconType {

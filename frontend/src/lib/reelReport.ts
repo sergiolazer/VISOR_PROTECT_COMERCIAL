@@ -13,7 +13,7 @@ export function getReelIcon(iconType: ReelIconType): string {
 }
 
 export function formatEventTime(isoDate: string): string {
-  return new Intl.DateTimeFormat('es', {
+  return new Intl.DateTimeFormat('pt-BR', {
     hour: '2-digit',
     minute: '2-digit',
     day: '2-digit',

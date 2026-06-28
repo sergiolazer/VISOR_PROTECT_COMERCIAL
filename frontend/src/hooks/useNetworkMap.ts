@@ -61,7 +61,7 @@ export function useNetworkMap(cityName: string | null) {
       const data = await fetchNetworkShops(cityName);
       setShops(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al cargar mapa');
+      setError(err instanceof Error ? err.message : 'Erro ao carregar mapa');
       setShops([]);
     } finally {
       setLoading(false);

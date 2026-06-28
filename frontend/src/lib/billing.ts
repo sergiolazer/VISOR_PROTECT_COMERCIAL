@@ -17,7 +17,7 @@ export async function createMercadoPagoCheckout(shopId?: string): Promise<Checko
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.message ?? 'No se pudo iniciar el checkout de Mercado Pago');
+    throw new Error(data.message ?? 'Não foi possível iniciar o checkout do Mercado Pago');
   }
 
   return data as CheckoutSessionResponse;

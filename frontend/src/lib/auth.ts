@@ -89,7 +89,7 @@ export async function login(
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.message ?? 'Error al iniciar sesión');
+    throw new Error(data.message ?? 'Erro ao entrar');
   }
 
   return data as AuthSession;
@@ -114,7 +114,7 @@ export async function refreshSession(): Promise<AuthSession> {
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.message ?? 'Error al renovar la sesión');
+    throw new Error(data.message ?? 'Erro ao renovar a sessão');
   }
 
   return data as AuthSession;
@@ -143,7 +143,7 @@ export async function register(
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.message ?? 'Error al registrarse');
+    throw new Error(data.message ?? 'Erro ao cadastrar');
   }
 
   return data as AuthSession;

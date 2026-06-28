@@ -13,7 +13,7 @@ export async function compressImageFile(file: File): Promise<File> {
 
   const context = canvas.getContext('2d');
   if (!context) {
-    throw new Error('No se pudo procesar la imagen');
+    throw new Error('Não foi possível processar a imagem');
   }
 
   context.drawImage(bitmap, 0, 0, width, height);
@@ -23,7 +23,7 @@ export async function compressImageFile(file: File): Promise<File> {
     canvas.toBlob(
       (result) => {
         if (!result) {
-          reject(new Error('Error al comprimir la imagen'));
+          reject(new Error('Erro ao comprimir a imagem'));
           return;
         }
         resolve(result);

@@ -35,7 +35,7 @@ export function useChat({ currentShopId, enabled }: UseChatOptions) {
       const items = await fetchConversations();
       setConversations(items);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al cargar conversaciones');
+      setError(err instanceof Error ? err.message : 'Erro ao carregar conversas');
     } finally {
       setLoadingConversations(false);
     }
@@ -65,7 +65,7 @@ export function useChat({ currentShopId, enabled }: UseChatOptions) {
           }
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error al abrir conversación');
+        setError(err instanceof Error ? err.message : 'Erro ao abrir conversa');
         setMessages([]);
       } finally {
         setLoadingMessages(false);

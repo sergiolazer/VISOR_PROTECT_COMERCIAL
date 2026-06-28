@@ -51,7 +51,7 @@ export function refreshLocationCache(): Promise<GeoLocation> {
     }
 
     if (!navigator.geolocation) {
-      reject(new Error('Geolocalización no disponible'));
+      reject(new Error('Geolocalização indisponível'));
       return;
     }
 

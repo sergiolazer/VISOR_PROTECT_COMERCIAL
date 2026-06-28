@@ -33,13 +33,13 @@ export interface ChatMessageItem {
 export const CONVERSATION_TYPES = ['DIRECT', 'GROUP'] as const;
 export type ConversationType = (typeof CONVERSATION_TYPES)[number];
 
-export const IMAGE_MESSAGE_PREVIEW = '📷 Imagen';
+export const IMAGE_MESSAGE_PREVIEW = '📷 Imagem';
 
-/** Retención automática de mensajes de chat (LGPD — minimización de datos). */
+/** Retenção automática de mensagens de chat (LGPD — minimização de dados). */
 export const CHAT_MESSAGE_RETENTION_DAYS = 7;
 export const CHAT_MESSAGE_RETENTION_SECONDS = 604800;
 export const CHAT_RETENTION_NOTICE =
-  'Por seguridad y privacidad, los mensajes e imágenes se eliminan automáticamente tras 7 días.';
+  'Por segurança e privacidade, mensagens e imagens são excluídas automaticamente após 7 dias.';
 
 export const CHAT_EXPORT_NOTICE =
-  'Este archivo contiene el respaldo de tus alertas de seguridad de los últimos 7 días. Consérvalo en un lugar seguro bajo tu responsabilidad.';
+  'Este arquivo contém o backup dos seus relatos de segurança dos últimos 7 dias. Guarde-o em local seguro sob sua responsabilidade.';

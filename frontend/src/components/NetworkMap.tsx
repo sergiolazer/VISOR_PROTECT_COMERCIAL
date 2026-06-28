@@ -102,7 +102,7 @@ function MapSurface({
       {expanded && (
         <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold text-white">Mapa de la red</h2>
+            <h2 className="text-sm font-semibold text-white">Mapa da rede</h2>
             <p className="text-xs text-slate-400">
               {cityName} · {onlineCount} conectado{onlineCount === 1 ? '' : 's'}
             </p>
@@ -112,7 +112,7 @@ function MapSurface({
             onClick={onToggleExpand}
             className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-700"
           >
-            Cerrar
+            Fechar
           </button>
         </div>
       )}
@@ -129,9 +129,9 @@ function MapSurface({
             type="button"
             onClick={onToggleExpand}
             className="absolute right-3 top-3 z-[500] rounded-lg border border-slate-600/80 bg-slate-900/90 px-2.5 py-1.5 text-[10px] font-medium text-slate-200 shadow-lg backdrop-blur hover:bg-slate-800"
-            aria-label="Abrir mapa en pantalla completa"
+            aria-label="Abrir mapa em tela cheia"
           >
-            Pantalla completa
+            Tela cheia
           </button>
         )}
 
@@ -139,13 +139,13 @@ function MapSurface({
           <div
             ref={containerRef}
             className={expanded ? 'absolute inset-0' : 'h-80 w-full'}
-            aria-label="Mapa de comercios conectados"
+            aria-label="Mapa de comércios conectados"
           />
         </div>
 
         {loading && shops.length === 0 && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/60 text-sm text-slate-300">
-            Cargando mapa...
+            Carregando mapa...
           </div>
         )}
 
@@ -157,7 +157,7 @@ function MapSurface({
 
         {!loading && !error && shops.length === 0 && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/50 px-6 text-center text-sm text-slate-400">
-            No hay comercios con ubicación en esta ciudad.
+            Não há comércios com localização nesta cidade.
           </div>
         )}
       </div>
@@ -254,12 +254,12 @@ export function NetworkMap({ cityName, currentShopId }: NetworkMapProps) {
         zIndexOffset: isOwnShop ? 1000 : shop.is_online ? 500 : 0,
       });
 
-      const status = shop.is_online ? 'Conectado ahora' : 'Desconectado';
+      const status = shop.is_online ? 'Conectado agora' : 'Desconectado';
       marker.bindPopup(
         `<div class="network-map-popup">
           <strong>${escapeHtml(shop.name)}</strong>
           <span>${status}</span>
-          ${isOwnShop ? '<em>Tu comercio</em>' : ''}
+          ${isOwnShop ? '<em>Seu comércio</em>' : ''}
         </div>`,
       );
 
@@ -275,7 +275,7 @@ export function NetworkMap({ cityName, currentShopId }: NetworkMapProps) {
         <div className="mb-3 flex items-end justify-between gap-2">
           <div>
             <h2 className="text-xs font-bold uppercase tracking-wide text-sky-400/90">
-              Mapa de la red
+              Mapa da rede
             </h2>
             <p className="text-[10px] text-slate-500">
               {cityName} · {onlineCount} conectado{onlineCount === 1 ? '' : 's'}
@@ -287,7 +287,7 @@ export function NetworkMap({ cityName, currentShopId }: NetworkMapProps) {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
               </span>
-              En línea
+              Online
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-slate-500" />

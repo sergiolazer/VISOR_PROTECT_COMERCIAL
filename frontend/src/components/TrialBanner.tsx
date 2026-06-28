@@ -27,7 +27,7 @@ function ActivateSubscriptionButton({
       const session = await createMercadoPagoCheckout(shopId);
       window.location.href = session.init_point;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al abrir Mercado Pago');
+      setError(err instanceof Error ? err.message : 'Erro ao abrir o Mercado Pago');
       setLoading(false);
     }
   };
@@ -40,10 +40,10 @@ function ActivateSubscriptionButton({
   return (
     <div className="mt-2">
       <button type="button" className={buttonClass} disabled={loading} onClick={() => void handleActivate()}>
-        {loading ? 'Redirigiendo a Mercado Pago...' : 'Activar suscripción'}
+        {loading ? 'Redirecionando ao Mercado Pago...' : 'Ativar assinatura'}
       </button>
       <p className="mt-1 text-[10px] opacity-80">
-        R$ {SUBSCRIPTION_MONTHLY_PRICE_BRL.toFixed(2)}/mes · PIX, tarjeta y boleto vía Mercado Pago
+        R$ {SUBSCRIPTION_MONTHLY_PRICE_BRL.toFixed(2)}/mês · PIX, cartão e boleto via Mercado Pago
       </p>
       {error && (
         <p className="mt-1 text-[10px] text-red-300" role="alert">
@@ -61,7 +61,7 @@ export function TrialBanner({ subscription, shopName, shopId }: TrialBannerProps
 
   if (subscription.status === 'TRIAL' && subscription.daysRemaining !== null && subscription.daysRemaining > 0) {
     const days = subscription.daysRemaining;
-    const dayLabel = days === 1 ? 'día' : 'días';
+    const dayLabel = days === 1 ? 'dia' : 'dias';
 
     return (
       <div
@@ -69,16 +69,16 @@ export function TrialBanner({ subscription, shopName, shopId }: TrialBannerProps
         className="sticky top-0 z-40 border-b border-amber-500/40 bg-amber-950/90 px-4 py-3 text-center backdrop-blur-sm"
       >
         <p className="text-sm text-amber-100">
-          Te {days === 1 ? 'queda' : 'quedan'}{' '}
+          {days === 1 ? 'Resta' : 'Restam'}{' '}
           <strong className="font-bold text-amber-300">
             {days} {dayLabel}
           </strong>{' '}
-          de prueba gratuita{shopName ? ` en ${shopName}` : ''}. Asegura tu local conectándote a la red.
+          de teste gratuito{shopName ? ` em ${shopName}` : ''}. Proteja seu estabelecimento conectando-se à rede.
         </p>
         <p className="mt-1 text-[10px] text-amber-200/70">
-          Al finalizar los 15 días, las alertas prioritarias se restringen sin método de pago (
+          Ao final dos 15 dias, alertas prioritários ficam restritos sem método de pagamento (
           <a href="#terminos-suscripcion" className="underline hover:text-amber-100">
-            términos de servicio
+            termos de serviço
           </a>
           ).
         </p>
@@ -94,8 +94,8 @@ export function TrialBanner({ subscription, shopName, shopId }: TrialBannerProps
         className="sticky top-0 z-40 border-b border-red-500/40 bg-red-950/90 px-4 py-3 text-center backdrop-blur-sm"
       >
         <p className="text-sm text-red-100">
-          Tu periodo de prueba ha finalizado. Configura un método de pago para volver a emitir alertas
-          prioritarias.
+          Seu período de teste terminou. Configure um método de pagamento para voltar a emitir alertas
+          prioritários.
         </p>
         <ActivateSubscriptionButton shopId={shopId} variant="danger" />
       </div>
@@ -109,7 +109,7 @@ export function TrialBanner({ subscription, shopName, shopId }: TrialBannerProps
         className="sticky top-0 z-40 border-b border-slate-600 bg-slate-900 px-4 py-3 text-center"
       >
         <p className="text-xs text-slate-400">
-          Suscripción cancelada. Contacta soporte o reactiva con Mercado Pago.
+          Assinatura cancelada. Entre em contato com o suporte ou reative pelo Mercado Pago.
         </p>
         <ActivateSubscriptionButton shopId={shopId} variant="danger" />
       </div>

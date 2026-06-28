@@ -1,4 +1,5 @@
 import type { FeedEventItem } from '@visor-protect/shared';
+import { formatAlertTypeLabel, formatUrgencyLabel } from '../lib/labels';
 import { formatEventTime } from '../lib/reelReport';
 
 interface PanicOverlayProps {
@@ -10,7 +11,7 @@ export function PanicOverlay({ alert, onAcknowledge }: PanicOverlayProps) {
   const locationText =
     alert.location != null
       ? `${alert.location.lat.toFixed(5)}, ${alert.location.lng.toFixed(5)}`
-      : 'Ubicación no disponible';
+      : 'Localização indisponível';
 
   return (
     <div
@@ -25,7 +26,7 @@ export function PanicOverlay({ alert, onAcknowledge }: PanicOverlayProps) {
             🚨
           </p>
           <h2 id="panic-title" className="text-2xl font-black uppercase text-red-100 tracking-wide">
-            Alerta de Emergencia
+            Alerta de emergência
           </h2>
           <p className="mt-2 text-red-200 font-semibold">
             {alert.sender_shop_name} — {alert.city}
@@ -34,20 +35,20 @@ export function PanicOverlay({ alert, onAcknowledge }: PanicOverlayProps) {
 
         <div className="mt-6 space-y-3 rounded-xl bg-red-900/50 p-4 text-red-50">
           <p>
-            <span className="font-semibold">Tipo:</span> {alert.alert_type ?? 'EMERGENCIA'}
+            <span className="font-semibold">Tipo:</span> {formatAlertTypeLabel(alert.alert_type)}
           </p>
           <p>
-            <span className="font-semibold">Urgencia:</span>{' '}
-            {alert.urgency_level ?? 'CRITICAL'}
+            <span className="font-semibold">Urgência:</span>{' '}
+            {formatUrgencyLabel(alert.urgency_level)}
           </p>
           <p>
-            <span className="font-semibold">Descripción:</span> {alert.description}
+            <span className="font-semibold">Descrição:</span> {alert.description}
           </p>
           <p>
-            <span className="font-semibold">Ubicación GPS:</span> {locationText}
+            <span className="font-semibold">Localização GPS:</span> {locationText}
           </p>
           <p>
-            <span className="font-semibold">Hora:</span> {formatEventTime(alert.created_at)}
+            <span className="font-semibold">Horário:</span> {formatEventTime(alert.created_at)}
           </p>
         </div>
 
@@ -56,7 +57,7 @@ export function PanicOverlay({ alert, onAcknowledge }: PanicOverlayProps) {
           onClick={onAcknowledge}
           className="mt-6 w-full rounded-xl bg-white py-4 text-lg font-bold text-red-700 hover:bg-red-50 transition-colors"
         >
-          Entendido — Tomar precauciones
+          Entendi — Tomar precauções
         </button>
       </div>
     </div>

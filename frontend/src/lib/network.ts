@@ -11,7 +11,7 @@ export async function fetchNetworkShops(city: string): Promise<NetworkShopPin[]>
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.message ?? 'Error al cargar comercios de la red');
+    throw new Error(data.message ?? 'Erro ao carregar comércios da rede');
   }
 
   return (data.shops ?? []) as NetworkShopPin[];

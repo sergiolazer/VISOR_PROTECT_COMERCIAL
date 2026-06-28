@@ -4,9 +4,9 @@ import { submitReelReport } from '../lib/reelReport';
 
 const ICON_OPTIONS: { value: ReelIconType; label: string }[] = [
   { value: 'info', label: 'Informativo' },
-  { value: 'suspicious', label: 'Sospechoso' },
-  { value: 'theft', label: 'Robo' },
-  { value: 'accident', label: 'Accidente' },
+  { value: 'suspicious', label: 'Suspeito' },
+  { value: 'theft', label: 'Roubo' },
+  { value: 'accident', label: 'Acidente' },
 ];
 
 export function ReelReportForm({ disabled = false }: { disabled?: boolean }) {
@@ -34,7 +34,7 @@ export function ReelReportForm({ disabled = false }: { disabled?: boolean }) {
       setStatus('sent');
       window.setTimeout(() => setStatus('idle'), 3000);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Error al enviar reporte');
+      setErrorMessage(error instanceof Error ? error.message : 'Erro ao enviar relato');
       setStatus('error');
     }
   };
@@ -44,7 +44,7 @@ export function ReelReportForm({ disabled = false }: { disabled?: boolean }) {
       onSubmit={handleSubmit}
       className={`w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/80 p-5 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
     >
-      <h3 className="text-sm font-semibold text-white mb-3">Publicar reporte informativo</h3>
+      <h3 className="text-sm font-semibold text-white mb-3">Publicar relato informativo</h3>
 
       <label className="block text-xs text-slate-400 mb-1" htmlFor="icon-type">
         Tipo de evento
@@ -63,13 +63,13 @@ export function ReelReportForm({ disabled = false }: { disabled?: boolean }) {
       </select>
 
       <label className="block text-xs text-slate-400 mb-1" htmlFor="description">
-        Descripción física (sin nombres propios)
+        Descrição física (sem nomes próprios)
       </label>
       <textarea
         id="description"
         value={description}
         onChange={(e) => setDescription(e.target.value)}
-        placeholder='Ej: Hombre, camisa azul, mochila negra, dirección norte'
+        placeholder="Ex.: Homem, camisa azul, mochila preta, sentido norte"
         rows={3}
         minLength={10}
         maxLength={500}
@@ -86,8 +86,8 @@ export function ReelReportForm({ disabled = false }: { disabled?: boolean }) {
           required
         />
         <span className="text-xs text-slate-400">
-          Confirmo que la información es verídica según mi observación y asumo la responsabilidad
-          legal de este reporte.
+          Confirmo que a informação é verdadeira conforme minha observação e assumo a responsabilidade
+          legal deste relato.
         </span>
       </label>
 
@@ -96,7 +96,7 @@ export function ReelReportForm({ disabled = false }: { disabled?: boolean }) {
         disabled={status === 'sending' || !acceptedDisclaimer}
         className="w-full rounded-xl bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50 transition-colors"
       >
-        {status === 'sending' ? 'Publicando...' : status === 'sent' ? 'Reporte publicado' : 'Publicar en el Reel'}
+        {status === 'sending' ? 'Publicando...' : status === 'sent' ? 'Relato publicado' : 'Publicar no feed'}
       </button>
 
       {status === 'error' && errorMessage && (

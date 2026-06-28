@@ -6,10 +6,6 @@ interface LoginProps {
   onSuccess: (session: AuthSession) => void;
 }
 
-/**
- * Acceso al comercio con cookie HttpOnly.
- * El JWT nunca se expone a JavaScript — solo viaja en cookie + handshake WS.
- */
 export function Login({ onSuccess }: LoginProps) {
   const [email, setEmail] = useState('demo@visorprotect.local');
   const [password, setPassword] = useState('demo1234');
@@ -27,7 +23,7 @@ export function Login({ onSuccess }: LoginProps) {
       connectSocket();
       onSuccess(session);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error de autenticación');
+      setError(err instanceof Error ? err.message : 'Erro de autenticação');
     } finally {
       setLoading(false);
     }
@@ -38,13 +34,13 @@ export function Login({ onSuccess }: LoginProps) {
       onSubmit={handleSubmit}
       className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl"
     >
-      <h2 className="text-xl font-bold text-white mb-1">Acceso al comercio</h2>
+      <h2 className="text-xl font-bold text-white mb-1">Acesso ao comércio</h2>
       <p className="text-xs text-slate-400 mb-6">
-        Sesión segura con cookie HttpOnly · JWT 24h · WebSocket autenticado
+        Sessão segura com cookie HttpOnly · JWT 24h · WebSocket autenticado
       </p>
 
       <label className="block text-xs text-slate-400 mb-1" htmlFor="login-email">
-        Email
+        E-mail
       </label>
       <input
         id="login-email"
@@ -57,7 +53,7 @@ export function Login({ onSuccess }: LoginProps) {
       />
 
       <label className="block text-xs text-slate-400 mb-1" htmlFor="login-password">
-        Contraseña
+        Senha
       </label>
       <input
         id="login-password"
@@ -74,7 +70,7 @@ export function Login({ onSuccess }: LoginProps) {
         disabled={loading}
         className="w-full rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-slate-900 hover:bg-amber-400 disabled:opacity-50 transition-colors"
       >
-        {loading ? 'Autenticando...' : 'Iniciar sesión'}
+        {loading ? 'Autenticando...' : 'Entrar'}
       </button>
 
       {error && (

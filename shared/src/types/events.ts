@@ -15,10 +15,10 @@ export const QUICK_REPORT_CATEGORIES = [
 export type QuickReportCategory = (typeof QUICK_REPORT_CATEGORIES)[number];
 
 export const QUICK_REPORT_LABELS: Record<QuickReportCategory, string> = {
-  SUSPICIOUS_PERSON: 'Persona sospechosa',
-  VEHICLE: 'Vehículo',
+  SUSPICIOUS_PERSON: 'Pessoa suspeita',
+  VEHICLE: 'Veículo',
   MINOR_INCIDENT: 'Incidente menor',
-  SECURITY_REPORT: 'Reporte de seguridad',
+  SECURITY_REPORT: 'Relato de segurança',
 };
 
 export const FEED_RETENTION_HOURS = 2;

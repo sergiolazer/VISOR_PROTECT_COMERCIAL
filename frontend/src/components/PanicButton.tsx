@@ -8,7 +8,6 @@ export interface PanicButtonProps {
   alertType?: AlertType;
   urgencyLevel?: UrgencyLevel;
   canEmitAlerts?: boolean;
-  /** Ubicación registrada del comercio — fallback si GPS del navegador falla o está lejos. */
   shopLocation?: { lat: number; lng: number } | null;
 }
 
@@ -29,7 +28,7 @@ async function resolvePanicLocation(
 function getCurrentPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      reject(new Error('Geolocalización no disponible'));
+      reject(new Error('Geolocalização indisponível'));
       return;
     }
     navigator.geolocation.getCurrentPosition(resolve, reject, {
@@ -90,7 +89,7 @@ export function PanicButton({
       setState('sent');
       window.setTimeout(() => setState('idle'), 4000);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Error al enviar');
+      setErrorMessage(error instanceof Error ? error.message : 'Erro ao enviar');
       setState('error');
     }
   };
@@ -99,7 +98,7 @@ export function PanicButton({
     return (
       <div className="flex flex-col items-center gap-4 p-6 rounded-2xl bg-slate-900 border border-red-500/40 max-w-sm w-full">
         <p className="text-center text-slate-200 font-medium">
-          ¿Confirmar alerta de PÁNICO?
+          Confirmar alerta de PÂNICO?
         </p>
         <div className="flex gap-3 w-full">
           <button type="button" onClick={() => setState('idle')} className="flex-1 py-3 rounded-xl bg-slate-700 text-white">
@@ -117,7 +116,7 @@ export function PanicButton({
     <div className="flex flex-col items-center gap-4">
       {!canEmitAlerts && (
         <p className="text-xs text-amber-400/90 text-center max-w-xs">
-          Alertas prioritarias deshabilitadas — activa tu suscripción para usar el botón de pánico.
+          Alertas prioritários desativados — ative sua assinatura para usar o botão de pânico.
         </p>
       )}
       <button
@@ -132,7 +131,7 @@ export function PanicButton({
               : 'bg-red-600 animate-pulse'
         } text-white shadow-[0_0_40px_rgba(220,38,38,0.6)]`}
       >
-        {state === 'sending' ? 'Enviando...' : state === 'sent' ? 'Alerta Enviada' : 'Pánico'}
+        {state === 'sending' ? 'Enviando...' : state === 'sent' ? 'Alerta enviado' : 'Pânico'}
       </button>
       {state === 'error' && errorMessage && (
         <p className="text-red-400 text-sm">{errorMessage}</p>

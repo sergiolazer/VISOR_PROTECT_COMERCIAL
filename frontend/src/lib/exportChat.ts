@@ -8,7 +8,7 @@ export async function downloadChatExport(shopId: string): Promise<void> {
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(
-      (data as { message?: string }).message ?? 'Error al exportar historial',
+      (data as { message?: string }).message ?? 'Erro ao exportar histórico',
     );
   }
 
@@ -16,7 +16,7 @@ export async function downloadChatExport(shopId: string): Promise<void> {
   const url = window.URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `reporte_seguridad_${new Date().toISOString().slice(0, 10)}.csv`;
+  anchor.download = `relato_seguranca_${new Date().toISOString().slice(0, 10)}.csv`;
   anchor.click();
   window.URL.revokeObjectURL(url);
 }

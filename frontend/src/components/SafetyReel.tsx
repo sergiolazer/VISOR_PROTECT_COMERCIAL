@@ -55,7 +55,7 @@ function ReelCard({
           <div className="mt-3 flex items-center gap-2">
             {event.confirmation_count > 0 && (
               <span className="rounded-full bg-emerald-900/50 px-2 py-0.5 text-xs text-emerald-300">
-                ✓ {event.confirmation_count} confirmaciones
+                ✓ {event.confirmation_count} confirmações
               </span>
             )}
 
@@ -65,12 +65,12 @@ function ReelCard({
                 onClick={() => onConfirm(event.id)}
                 className="rounded-lg bg-slate-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-600 transition-colors"
               >
-                Visto / Cierto
+                Vi / Confirmo
               </button>
             )}
 
             {event.confirmed_by_shop && (
-              <span className="text-xs text-emerald-400">Usted confirmó este reporte</span>
+              <span className="text-xs text-emerald-400">Você confirmou este relato</span>
             )}
           </div>
         </div>
@@ -89,9 +89,9 @@ export function SafetyReel({
   return (
     <aside className="flex h-full flex-col rounded-2xl border border-slate-800 bg-slate-950/90">
       <header className="border-b border-slate-800 p-4">
-        <h2 className="text-lg font-bold text-white">Safety Reel</h2>
+        <h2 className="text-lg font-bold text-white">Feed de Segurança</h2>
         <p className="mt-1 text-xs text-slate-400">
-          Eventos de las últimas 2 horas en su ciudad
+          Eventos das últimas 2 horas na sua cidade
         </p>
 
         <div className="mt-3 flex flex-wrap gap-2">
@@ -115,7 +115,7 @@ export function SafetyReel({
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3 max-h-[70vh] lg:max-h-none">
         {events.length === 0 ? (
           <p className="text-center text-sm text-slate-500 py-8">
-            No hay reportes para el filtro seleccionado
+            Não há relatos para o filtro selecionado
           </p>
         ) : (
           events.map((event) => (
@@ -131,9 +131,9 @@ export function SafetyReel({
 
       <footer className="border-t border-slate-800 p-3">
         <p className="text-[10px] leading-relaxed text-slate-500">
-          Aviso legal: La veracidad de los reportes es responsabilidad del usuario.
-          Use descripciones físicas (ej. &quot;Hombre, camisa azul, mochila negra&quot;).
-          No incluya nombres propios.
+          Aviso legal: a veracidade dos relatos é de responsabilidade do usuário.
+          Use descrições físicas (ex.: &quot;Homem, camisa azul, mochila preta&quot;).
+          Não inclua nomes próprios.
         </p>
       </footer>
     </aside>

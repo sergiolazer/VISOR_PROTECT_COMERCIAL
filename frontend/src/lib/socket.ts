@@ -98,7 +98,7 @@ export async function initializeShopSession(cityName: string): Promise<ShopSessi
 
   return {
     shopId: joined.shop_id ?? user?.shopId ?? '',
-    shopName: user?.name ?? 'Comercio',
+    shopName: user?.name ?? 'Comércio',
     cityName: joined.city_name,
     socketId: getSocket().id ?? '',
     room: joined.room,

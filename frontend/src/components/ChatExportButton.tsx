@@ -17,7 +17,7 @@ export function ChatExportButton({ shopId }: ChatExportButtonProps) {
     try {
       await downloadChatExport(shopId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al exportar');
+      setError(err instanceof Error ? err.message : 'Erro ao exportar');
     } finally {
       setLoading(false);
     }
@@ -31,7 +31,7 @@ export function ChatExportButton({ shopId }: ChatExportButtonProps) {
         disabled={loading}
         className="w-full rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-semibold text-emerald-300 hover:bg-slate-700 disabled:opacity-50"
       >
-        {loading ? 'Generando CSV...' : 'Exportar historial (CSV)'}
+        {loading ? 'Gerando CSV...' : 'Exportar histórico (CSV)'}
       </button>
       <p className="mt-1.5 text-[9px] text-slate-500 leading-snug">{CHAT_EXPORT_NOTICE}</p>
       {error && (

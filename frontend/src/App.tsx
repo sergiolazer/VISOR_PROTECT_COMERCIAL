@@ -124,7 +124,7 @@ export default function App() {
     let cancelled = false;
 
     const handleBillingReturn = async () => {
-      setBillingNotice('Procesando confirmación de Mercado Pago...');
+      setBillingNotice('Processando confirmação do Mercado Pago...');
       try {
         const session = await refreshSession();
         if (!cancelled) {
@@ -132,13 +132,15 @@ export default function App() {
           setAuthSession(session);
           setBillingNotice(
             session.shops.some((s) => s.subscription.status === 'ACTIVE')
-              ? '¡Suscripción activada! Ya puedes emitir alertas prioritarias.'
-              : 'Regreso desde Mercado Pago. Si autorizaste el pago, la activación puede tardar unos segundos.',
+              ? 'Assinatura ativada! Você já pode emitir alertas prioritários.'
+              : 'Retorno do Mercado Pago. Se você autorizou o pagamento, a ativação pode levar alguns segundos.',
           );
         }
       } catch {
         if (!cancelled) {
-          setBillingNotice('No se pudo refrescar la sesión. Inicia sesión de nuevo si el pago fue autorizado.');
+          setBillingNotice(
+            'Não foi possível atualizar a sessão. Faça login novamente se o pagamento foi autorizado.',
+          );
         }
       }
 
@@ -204,7 +206,7 @@ export default function App() {
   if (authLoading) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-slate-950">
-        <p className="text-slate-400 text-sm">Verificando sesión...</p>
+        <p className="text-slate-400 text-sm">Verificando sessão...</p>
       </main>
     );
   }
@@ -213,8 +215,8 @@ export default function App() {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-950">
         <header className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Visor Protect Comercio</h1>
-          <p className="text-slate-400 text-sm">Red colaborativa de seguridad</p>
+          <h1 className="text-3xl font-bold text-white mb-2">Visor Protect Comércio</h1>
+          <p className="text-slate-400 text-sm">Rede colaborativa de segurança</p>
         </header>
         <Login onSuccess={handleLoginSuccess} />
       </main>
@@ -260,12 +262,12 @@ export default function App() {
       <div className="min-h-screen xl:grid xl:grid-cols-[1fr_340px_360px]">
         <main className="flex flex-col items-center justify-center gap-6 p-6 pb-28 border-b border-slate-800 xl:border-b-0">
           <header className="text-center">
-            <h1 className="text-3xl font-bold text-white mb-2">Visor Protect Comercio</h1>
+            <h1 className="text-3xl font-bold text-white mb-2">Visor Protect Comércio</h1>
             <p className="text-slate-400 text-sm">
-              Safety Reel — {displayCity}
+              Feed de Segurança — {displayCity}
             </p>
             <p className="text-xs text-slate-500 mt-1">
-              {displayShopName} · {authSession.user.name} · Estado:{' '}
+              {displayShopName} · {authSession.user.name} · Status:{' '}
               <span
                 className={
                   connectionStatus === 'connected'
@@ -278,7 +280,7 @@ export default function App() {
                 {connectionStatus === 'connected'
                   ? 'Conectado'
                   : connectionStatus === 'error'
-                    ? 'Error de conexión'
+                    ? 'Erro de conexão'
                     : 'Conectando...'}
               </span>
             </p>
@@ -287,7 +289,7 @@ export default function App() {
               onClick={() => void handleLogout()}
               className="mt-2 text-xs text-slate-500 hover:text-slate-300 underline"
             >
-              Cerrar sesión
+              Sair
             </button>
           </header>
 
@@ -307,9 +309,9 @@ export default function App() {
           <div className="border-t border-slate-800 xl:border-t-0 xl:border-l p-4 flex flex-col">
             <div className="mb-2">
               <h2 className="text-xs font-bold uppercase tracking-wide text-amber-400/90">
-                Safety Reel
+                Feed de Segurança
               </h2>
-              <p className="text-[10px] text-slate-500">Alertas y reportes de seguridad</p>
+              <p className="text-[10px] text-slate-500">Alertas e relatos de segurança</p>
             </div>
             <SafetyReel
               events={events}
@@ -335,9 +337,9 @@ export default function App() {
         id="terminos-suscripcion"
         className="border-t border-slate-800 px-6 py-4 text-center text-[10px] text-slate-500"
       >
-        Términos de servicio: la prueba gratuita dura 15 días. Al finalizar, el acceso a alertas
-        prioritarias (pánico, reportes geolocalizados) requiere suscripción activa y método de pago
-        configurado. Datos tratados conforme LGPD.
+        Termos de serviço: o período de teste gratuito dura 15 dias. Após o término, o acesso a
+        alertas prioritários (pânico, relatos geolocalizados) exige assinatura ativa e método de
+        pagamento configurado. Dados tratados conforme a LGPD.
       </footer>
     </>
   );

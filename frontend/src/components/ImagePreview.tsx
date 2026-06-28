@@ -9,7 +9,7 @@ interface ImagePreviewProps {
 
 export function ImagePreview({
   src,
-  alt = 'Imagen del chat',
+  alt = 'Imagem do chat',
   caption,
   thumbnailClassName = 'max-h-40 rounded-lg cursor-zoom-in object-cover',
 }: ImagePreviewProps) {
@@ -36,7 +36,7 @@ export function ImagePreview({
         type="button"
         onClick={() => setIsFullscreen(true)}
         className="block text-left"
-        aria-label="Abrir imagen en pantalla completa"
+        aria-label="Abrir imagem em tela cheia"
       >
         <img src={src} alt={alt} className={thumbnailClassName} loading="lazy" />
       </button>
@@ -51,14 +51,14 @@ export function ImagePreview({
           onClick={() => setIsFullscreen(false)}
           role="dialog"
           aria-modal="true"
-          aria-label="Vista ampliada de imagen"
+          aria-label="Visualização ampliada da imagem"
         >
           <button
             type="button"
             onClick={() => setIsFullscreen(false)}
             className="absolute top-4 right-4 rounded-full bg-slate-800/90 px-3 py-1 text-xs text-white hover:bg-slate-700"
           >
-            Cerrar
+            Fechar
           </button>
           <img
             src={src}

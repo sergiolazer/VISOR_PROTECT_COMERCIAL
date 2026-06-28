@@ -110,7 +110,7 @@ export function ReportQuickAction({ cityName: _cityName }: ReportQuickActionProp
     actionState === 'sending'
       ? 'Enviando...'
       : actionState === 'reported'
-        ? 'Reportado ✓'
+        ? 'Registrado ✓'
         : '+';
 
   const mainButtonClass =
@@ -150,8 +150,8 @@ export function ReportQuickAction({ cityName: _cityName }: ReportQuickActionProp
         disabled={actionState !== 'idle'}
         aria-label={
           actionState === 'idle'
-            ? 'Abrir acciones rápidas de reporte'
-            : `Estado: ${mainButtonLabel}`
+            ? 'Abrir ações rápidas de relato'
+            : `Status: ${mainButtonLabel}`
         }
         aria-expanded={isOpen}
         className={`
@@ -167,7 +167,7 @@ export function ReportQuickAction({ cityName: _cityName }: ReportQuickActionProp
 
       {actionState === 'reported' && activeCategory && (
         <p className="text-xs text-emerald-400 font-medium animate-fade-in">
-          {QUICK_REPORT_LABELS[activeCategory]} reportado
+          {QUICK_REPORT_LABELS[activeCategory]} registrado
         </p>
       )}
     </div>
