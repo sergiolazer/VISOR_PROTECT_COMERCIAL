@@ -146,12 +146,6 @@ import_if_planned_create 'aws_security_group.alb[0]' "$SG_ALB" "aws ec2 describe
 SG_ECS="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-ecs")"
 import_if_planned_create 'aws_security_group.ecs_tasks[0]' "$SG_ECS" "aws ec2 describe-security-groups --group-ids $SG_ECS"
 
-SGR_ECS_EGRESS="$(discover_sg_egress_all_rule "$SG_ECS")"
-import_if_planned_create \
-  'aws_security_group_rule.ecs_tasks_egress_all[0]' \
-  "$SGR_ECS_EGRESS" \
-  "aws ec2 describe-security-group-rules --security-group-rule-ids ${SGR_ECS_EGRESS}"
-
 import_if_planned_create \
   'aws_iam_role.ecs_execution[0]' \
   "${PREFIX}-ecs-execution" \

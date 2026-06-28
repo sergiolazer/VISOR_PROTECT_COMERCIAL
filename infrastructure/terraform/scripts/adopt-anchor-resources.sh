@@ -110,9 +110,11 @@ purge_deprecated_sg_rules() {
   local rule_addr
   for rule_addr in \
     'aws_security_group_rule.ecs_tasks_from_alb[0]' \
-    'aws_security_group_rule.redis_from_ecs[0]'; do
+    'aws_security_group_rule.redis_from_ecs[0]' \
+    'aws_security_group_rule.ecs_tasks_egress_all[0]' \
+    'aws_security_group_rule.ecs_tasks_egress_all'; do
     if in_state "$rule_addr"; then
-      echo "[adopt-anchor] state rm $rule_addr (reglas inline en SG)"
+      echo "[adopt-anchor] state rm $rule_addr (regla gestionada fuera de TF o inline en SG)"
       terraform state rm "$rule_addr" 2>/dev/null || true
     fi
   done
@@ -140,14 +142,6 @@ SG_ECS="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-ecs")"
 SG_VPCE="$(sg_by_name_in_vpc "$VPC_ID" "${PREFIX}-vpc-endpoints")"
 
 ensure_ecs_sg_egress "$SG_ECS"
-
-SGR_ECS_EGRESS="$(discover_sg_egress_all_rule "$SG_ECS")"
-if aws_value_ok "$SGR_ECS_EGRESS"; then
-  import_if_missing \
-    'aws_security_group_rule.ecs_tasks_egress_all[0]' \
-    "$SGR_ECS_EGRESS" \
-    "aws ec2 describe-security-group-rules --security-group-rule-ids ${SGR_ECS_EGRESS}"
-fi
 
 purge_managed_sg_if_live_in_aws 'aws_security_group.alb[0]' "$SG_ALB"
 purge_managed_sg_if_live_in_aws 'aws_security_group.ecs_tasks[0]' "$SG_ECS"
