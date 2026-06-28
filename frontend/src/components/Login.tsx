@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { login, saveAuthSession, type AuthSession } from '../lib/auth';
 import { connectSocket } from '../lib/socket';
-import { shopConfig } from '../config/shopConfig';
 
 interface LoginProps {
   onSuccess: (session: AuthSession) => void;
@@ -23,7 +22,7 @@ export function Login({ onSuccess }: LoginProps) {
     setError(null);
 
     try {
-      const session = await login(email, password, shopConfig.shopId);
+      const session = await login(email, password);
       saveAuthSession(session);
       connectSocket();
       onSuccess(session);
@@ -85,7 +84,9 @@ export function Login({ onSuccess }: LoginProps) {
       )}
 
       <p className="mt-4 text-[10px] text-slate-500 text-center">
-        Demo: demo@visorprotect.local / demo1234
+        Demo 1: demo@visorprotect.local / demo1234
+        <br />
+        Demo 2: demo2@visorprotect.local / demo1234
       </p>
     </form>
   );

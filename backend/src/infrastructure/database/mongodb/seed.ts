@@ -10,6 +10,7 @@ import { MessageModel } from './models/Message.model';
 const DEMO_CONVERSATION_ID = '20000000-0000-4000-8000-000000000001';
 
 const DEMO_OWNER_ID = new mongoose.Types.ObjectId('000000000000000000000099');
+const DEMO2_OWNER_ID = new mongoose.Types.ObjectId('000000000000000000000098');
 const DEMO_PASSWORD = 'demo1234';
 
 const DEMO_SHOPS = [
@@ -59,14 +60,26 @@ async function seed(): Promise<void> {
     password_hash: passwordHash,
     name: 'Comerciante Demo',
     role: 'OWNER',
-    shop_ids: DEMO_SHOPS.map((shop) => shop._id),
+    shop_ids: [DEMO_SHOPS[0]._id, DEMO_SHOPS[2]._id],
+    is_active: true,
+  });
+
+  await UserModel.create({
+    _id: DEMO2_OWNER_ID,
+    email: 'demo2@visorprotect.local',
+    password_hash: passwordHash,
+    name: 'Comerciante Demo 2',
+    role: 'OWNER',
+    shop_ids: [DEMO_SHOPS[1]._id],
     is_active: true,
   });
 
   for (const shop of DEMO_SHOPS) {
+    const ownerId =
+      shop._id === DEMO_SHOPS[1]._id ? DEMO2_OWNER_ID : DEMO_OWNER_ID;
     await ShopModel.create({
       ...shop,
-      owner_id: DEMO_OWNER_ID,
+      owner_id: ownerId,
       socket_id: null,
     });
   }
@@ -129,7 +142,8 @@ async function seed(): Promise<void> {
   });
 
   console.log('[Seed] MongoDB Atlas poblado con datos demo');
-  console.log('[Seed] Login demo: demo@visorprotect.local / demo1234');
+  console.log('[Seed] Usuario 1: demo@visorprotect.local / demo1234 (Comercio Demo Centro)');
+  console.log('[Seed] Usuario 2: demo2@visorprotect.local / demo1234 (Comercio Demo Cercano)');
   await disconnectMongoDB();
 }
 
