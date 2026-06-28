@@ -28,6 +28,7 @@ export function connectSocket(): Socket {
   }
 
   socketInstance = io(SOCKET_URL, {
+    path: '/socket.io',
     transports: usePollingViaProxy ? ['polling'] : ['websocket', 'polling'],
     upgrade: !usePollingViaProxy,
     autoConnect: true,

@@ -94,15 +94,13 @@ body {
   min-height: 0;
 }
 
-/* Tailwind preflight rompe tiles (img { max-width: 100% }) */
+/* Tailwind preflight rompe tiles (img { max-width: 100% }) — solo resetear max-* */
 .leaflet-container img.leaflet-tile,
 .network-map-shell .leaflet-tile,
 .network-map-shell .leaflet-tile-container img,
 .network-map-shell img.leaflet-tile {
   max-width: none !important;
   max-height: none !important;
-  width: auto !important;
-  height: auto !important;
   padding: 0;
   border: none;
   display: block;

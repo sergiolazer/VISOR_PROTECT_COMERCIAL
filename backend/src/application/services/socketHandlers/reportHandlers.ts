@@ -33,6 +33,7 @@ export function registerReportHandlers(socket: Socket, deps: ReportHandlerDeps):
         iconType: input.icon_type,
       });
 
+      await deps.reelService.publishFeedToCity(feedItem.city, feedItem);
       socket.emit(SOCKET_EVENTS.REPORT_CREATED, feedItem);
     } catch (error) {
       emitSocketError(socket, error, 'Error al procesar new_report');
@@ -76,6 +77,7 @@ export function registerReportHandlers(socket: Socket, deps: ReportHandlerDeps):
         lng: report.lng,
       });
 
+      await deps.reelService.publishFeedToCity(feedItem.city, feedItem);
       socket.emit(SOCKET_EVENTS.REEL_REPORT_ACK, {
         event_id: feedItem.id,
         created_at: feedItem.created_at,
@@ -98,6 +100,7 @@ export function registerReportHandlers(socket: Socket, deps: ReportHandlerDeps):
         iconType: report.icon_type,
       });
 
+      await deps.reelService.publishFeedToCity(feedItem.city, feedItem);
       socket.emit(SOCKET_EVENTS.REEL_REPORT_ACK, {
         event_id: feedItem.id,
         created_at: feedItem.created_at,

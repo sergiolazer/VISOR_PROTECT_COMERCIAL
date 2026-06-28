@@ -59,7 +59,7 @@ function mergeFeedEvents(current: FeedEventItem[], incoming: FeedEventItem[]): F
   return sortByRelevance([...merged.values()]);
 }
 
-export function useSafetyReel(shopId: string | null, _cityName: string | null = null) {
+export function useSafetyReel(shopId: string | null, cityName: string | null = null) {
   const [events, setEvents] = useState<FeedEventItem[]>([]);
   const [filter, setFilter] = useState<FeedFilter>('all');
   const [activePanic, setActivePanic] = useState<FeedEventItem | null>(null);
@@ -125,6 +125,29 @@ export function useSafetyReel(shopId: string | null, _cityName: string | null = 
       unbind();
     };
   }, []);
+
+  /** Garante sala de cidade para FEED_UPDATES (independente do join em App). */
+  useEffect(() => {
+    if (!shopId || !cityName) {
+      return;
+    }
+
+    const socket = getSocket();
+
+    const joinCityRoom = () => {
+      socket.emit(SOCKET_EVENTS.JOIN_CITY, { city_name: cityName });
+    };
+
+    if (socket.connected) {
+      joinCityRoom();
+    }
+
+    socket.on('connect', joinCityRoom);
+
+    return () => {
+      socket.off('connect', joinCityRoom);
+    };
+  }, [shopId, cityName]);
 
   const filteredEvents = useMemo(
     () => sortByRelevance(applyFilter(events, filter)),

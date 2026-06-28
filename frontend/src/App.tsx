@@ -225,6 +225,7 @@ export default function App() {
 
   const displayCity = session?.cityName ?? shopCity;
   const displayShopName = session?.shopName ?? authSession.shops[0]?.name ?? shopConfig.shopName;
+  const activeShopId = session?.shopId ?? authSession.user.shopId;
 
   const activeShop =
     authSession.shops.find((s) => s.id === authSession.user.shopId) ?? authSession.shops[0];
@@ -257,7 +258,7 @@ export default function App() {
         <PanicOverlay alert={activePanic} onAcknowledge={dismissPanic} />
       )}
 
-      {session && <ReportQuickAction cityName={session.cityName} />}
+      {authSession && <ReportQuickAction cityName={displayCity} />}
 
       <div className="min-h-screen xl:grid xl:grid-cols-[1fr_340px_360px]">
         <main className="flex flex-col items-center justify-center gap-6 p-6 pb-28 border-b border-slate-800 xl:border-b-0">
@@ -293,19 +294,19 @@ export default function App() {
             </button>
           </header>
 
-          {session && (
+          {authSession && (
             <>
               <PanicButton
                 canEmitAlerts={activeSubscription.canEmitAlerts}
                 shopLocation={activeShop?.location ?? null}
               />
               <ReelReportForm disabled={!activeSubscription.canEmitAlerts} />
-              <NetworkMap cityName={displayCity} currentShopId={session.shopId} />
+              <NetworkMap cityName={displayCity} currentShopId={activeShopId} />
             </>
           )}
         </main>
 
-        {session && (
+        {authSession && (
           <div className="border-t border-slate-800 xl:border-t-0 xl:border-l p-4 flex flex-col">
             <div className="mb-2">
               <h2 className="text-xs font-bold uppercase tracking-wide text-amber-400/90">
@@ -318,15 +319,15 @@ export default function App() {
               filter={filter}
               onFilterChange={setFilter}
               onConfirmReport={confirmReport}
-              currentShopId={session.shopId}
+              currentShopId={activeShopId}
             />
           </div>
         )}
 
-        {session && (
+        {authSession && (
           <div className="border-t border-slate-800 xl:border-t-0 xl:border-l p-4">
             <ChatBox
-              currentShopId={session.shopId}
+              currentShopId={activeShopId}
               availableShops={authSession.shops}
             />
           </div>

@@ -135,10 +135,10 @@ function MapSurface({
           </button>
         )}
 
-        <div className={expanded ? 'relative min-h-0 flex-1' : 'relative'}>
+        <div className={expanded ? 'relative min-h-0 flex-1' : 'relative h-80'}>
           <div
             ref={containerRef}
-            className={expanded ? 'absolute inset-0' : 'h-80 w-full'}
+            className="absolute inset-0 h-full w-full min-h-[20rem]"
             aria-label="Mapa de comércios conectados"
           />
         </div>
@@ -203,7 +203,11 @@ export function NetworkMap({ cityName, currentShopId }: NetworkMapProps) {
     markersLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
     map.setView(DEFAULT_MAP_CENTER, 15);
-    window.setTimeout(() => map.invalidateSize(), 0);
+
+    const refresh = () => map.invalidateSize({ animate: false, pan: false });
+    map.whenReady(refresh);
+    window.setTimeout(refresh, 100);
+    window.setTimeout(refresh, 400);
 
     return () => {
       map.remove();
