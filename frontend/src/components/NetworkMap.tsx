@@ -12,7 +12,7 @@ interface NetworkMapProps {
 const DEFAULT_MAP_CENTER: L.LatLngExpression = [DEMO_MAP_CENTER.lat, DEMO_MAP_CENTER.lng];
 
 const MAP_TILES = {
-  url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+  url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
   attribution:
     '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
   subdomains: 'abcd',
@@ -200,6 +200,8 @@ export function NetworkMap({ cityName, currentShopId }: NetworkMapProps) {
 
     markersLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
+    map.setView(DEFAULT_MAP_CENTER, 15);
+    window.setTimeout(() => map.invalidateSize(), 0);
 
     return () => {
       map.remove();

@@ -86,6 +86,25 @@ body {
   font-family: inherit;
 }
 
+/* Tailwind preflight rompe tiles (img { max-width: 100% }) */
+.network-map-shell .leaflet-tile,
+.network-map-shell .leaflet-tile-container img,
+.network-map-shell img.leaflet-tile {
+  max-width: none !important;
+  max-height: none !important;
+  width: auto;
+  padding: 0;
+  border: none;
+}
+
+.network-map-shell .leaflet-pane {
+  z-index: 1;
+}
+
+.network-map-shell .leaflet-map-pane {
+  z-index: 1;
+}
+
 .network-map-shell .leaflet-control-attribution {
   background: rgba(15, 23, 42, 0.85) !important;
   color: #94a3b8 !important;

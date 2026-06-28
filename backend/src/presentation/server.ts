@@ -130,16 +130,17 @@ async function bootstrap(): Promise<void> {
   );
   await alertDispatchService.start();
 
-  const cityRoomService = new CityRoomService(io);
   const shopContextService = new ShopContextService((id) => shopRepository.findById(id));
 
   const alertEventRepository = new MongoAlertEventRepository();
   const alertRecipientRepository = new MongoAlertRecipientRepository();
   const alertFilterTelemetry = new AlertFilterTelemetryService();
+  const cityRoomService = new CityRoomService(io);
   const alertBroadcastService = new AlertBroadcastService(
     alertRecipientRepository,
     alertDispatchService,
     alertFilterTelemetry,
+    cityRoomService,
   );
   const alertService = new AlertService(
     alertEventRepository,

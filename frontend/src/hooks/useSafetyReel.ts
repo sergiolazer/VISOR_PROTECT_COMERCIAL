@@ -34,7 +34,7 @@ function prependFeedItem(current: FeedEventItem[], item: FeedEventItem): FeedEve
   return [item, ...current];
 }
 
-export function useSafetyReel(shopId: string | null) {
+export function useSafetyReel(shopId: string | null, cityName: string | null = null) {
   const [events, setEvents] = useState<FeedEventItem[]>([]);
   const [filter, setFilter] = useState<FeedFilter>('all');
   const [activePanic, setActivePanic] = useState<FeedEventItem | null>(null);
@@ -100,6 +100,20 @@ export function useSafetyReel(shopId: string | null) {
       unbind();
     };
   }, []);
+
+  /** Re-solicita historial tras join_city (evita perder FEED_HISTORY por carrera de listeners). */
+  useEffect(() => {
+    if (!shopId || !cityName) {
+      return;
+    }
+
+    const socket = getSocket();
+    if (!socket.connected) {
+      return;
+    }
+
+    socket.emit(SOCKET_EVENTS.JOIN_CITY, { city_name: cityName });
+  }, [shopId, cityName]);
 
   const filteredEvents = useMemo(
     () => sortByRelevance(applyFilter(events, filter)),

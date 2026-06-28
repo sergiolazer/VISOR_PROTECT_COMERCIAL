@@ -1,5 +1,6 @@
 import { AlertBroadcastService } from '../application/services/AlertBroadcastService';
 import { AlertService } from '../application/services/AlertService';
+import { CityRoomService } from '../application/services/CityRoomService';
 import { AlertDescriptionValidator } from '../application/validators/AlertDescriptionValidator';
 import { AlertFilterTelemetryService } from '../application/services/AlertFilterTelemetryService';
 import { SubscriptionService } from '../application/services/SubscriptionService';
@@ -14,10 +15,12 @@ export function createTestAlertService(harness: AlertTestHarness) {
   const filterTelemetry = new AlertFilterTelemetryService();
   const auditLogRepository = new MongoAuditLogRepository();
   const subscriptionService = new SubscriptionService(harness.shopRepository, auditLogRepository);
+  const cityRoomService = new CityRoomService(harness.io);
   const broadcastService = new AlertBroadcastService(
     recipientRepository,
     harness.alertDispatch,
     filterTelemetry,
+    cityRoomService,
   );
   const alertService = new AlertService(
     new MongoAlertEventRepository(),
