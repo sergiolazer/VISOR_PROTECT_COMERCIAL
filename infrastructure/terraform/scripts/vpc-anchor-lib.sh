@@ -156,3 +156,15 @@ discover_private_route_table_in_vpc() {
     --filters "Name=association.subnet-id,Values=${subnet_id}" \
     --query 'RouteTables[0].RouteTableId' --output text 2>/dev/null || echo ""
 }
+
+# Regla egress 0.0.0.0/0 ALL (sgr-xxx) — import Terraform aws_security_group_rule.
+discover_sg_egress_all_rule() {
+  local sg="$1"
+
+  [ -z "$sg" ] || [ "$sg" = "None" ] && return 0
+
+  aws ec2 describe-security-group-rules \
+    --filters "Name=group-id,Values=${sg}" \
+    --query "SecurityGroupRules[?IsEgress==\`true\` && CidrIpv4=='0.0.0.0/0' && IpProtocol=='-1'].SecurityGroupRuleId | [0]" \
+    --output text 2>/dev/null || echo ""
+}
