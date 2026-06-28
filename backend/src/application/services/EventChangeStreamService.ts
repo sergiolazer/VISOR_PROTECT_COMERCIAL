@@ -27,13 +27,20 @@ export class EventChangeStreamService {
 
       try {
         const record = mapEventLogDocumentToRecord(change.fullDocument);
-        const feedItem = mapEventLogRecordToFeedItem(record, false);
-
         if (!record.location) {
           return;
         }
 
-        await this.alertService.broadcastReportFromEventLog(record.id, feedItem);
+        const feedItem = mapEventLogRecordToFeedItem(record, false);
+
+        // Reintento: AlertEvent puede crearse justo después del EventLog (carrera).
+        for (let attempt = 1; attempt <= 8; attempt++) {
+          const delivered = await this.alertService.broadcastReportFromEventLog(record.id, feedItem);
+          if (delivered > 0) {
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 75 * attempt));
+        }
       } catch (error) {
         console.error('[ChangeStream] Error al procesar evento:', error);
       }

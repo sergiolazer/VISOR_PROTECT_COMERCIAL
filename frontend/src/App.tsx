@@ -181,10 +181,11 @@ export default function App() {
     };
 
     socket.on('connect', onConnect);
-    socket.on('disconnect', () => {
+    const onDisconnect = () => {
       setConnectionStatus('connecting');
       setSession(null);
-    });
+    };
+    socket.on('disconnect', onDisconnect);
 
     if (socket.connected) {
       onConnect();
@@ -192,7 +193,7 @@ export default function App() {
 
     return () => {
       socket.off('connect', onConnect);
-      disconnectSocket();
+      socket.off('disconnect', onDisconnect);
     };
   }, [authSession, authLoading, shopCity]);
 

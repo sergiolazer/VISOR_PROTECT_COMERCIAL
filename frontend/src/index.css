@@ -79,3 +79,112 @@ body {
 .animate-fade-in {
   animation: fade-in 0.3s ease-out;
 }
+
+/* Leaflet — mapa de red */
+.network-map-shell .leaflet-container {
+  background: #0c1222;
+  font-family: inherit;
+}
+
+.network-map-shell .leaflet-control-attribution {
+  background: rgba(15, 23, 42, 0.85) !important;
+  color: #94a3b8 !important;
+  font-size: 9px;
+  border-radius: 6px 0 0 0;
+}
+
+.network-map-shell .leaflet-control-attribution a {
+  color: #7dd3fc !important;
+}
+
+.network-map-shell .leaflet-control-zoom {
+  border: none !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;
+}
+
+.network-map-shell .leaflet-control-zoom a {
+  background: rgba(15, 23, 42, 0.92) !important;
+  color: #e2e8f0 !important;
+  border-color: #334155 !important;
+}
+
+.network-map-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.network-map-marker-inner {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.network-map-marker-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: var(--marker-fill, #10b981);
+  border: 3px solid var(--marker-ring, #34d399);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  position: relative;
+  z-index: 1;
+}
+
+.network-map-marker-pulse {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  background: rgba(16, 185, 129, 0.35);
+  animation: map-marker-pulse 2s ease-out infinite;
+}
+
+@keyframes map-marker-pulse {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.leaflet-popup-content-wrapper {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.leaflet-popup-tip {
+  background: #0f172a;
+}
+
+.network-map-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.network-map-popup strong {
+  color: #f8fafc;
+  font-size: 13px;
+}
+
+.network-map-popup span {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.network-map-popup em {
+  color: #38bdf8;
+  font-style: normal;
+  font-size: 10px;
+}

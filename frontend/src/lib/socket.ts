@@ -29,8 +29,11 @@ export function connectSocket(): Socket {
 
   socketInstance = io(SOCKET_URL, {
     transports: usePollingViaProxy ? ['polling'] : ['websocket', 'polling'],
+    upgrade: !usePollingViaProxy,
     autoConnect: true,
     withCredentials: true,
+    reconnection: true,
+    reconnectionAttempts: Infinity,
   });
 
   return socketInstance;

@@ -243,7 +243,7 @@ export class AlertService {
         alert_type: alertType,
         category: input.category,
       });
-    } else if (!env.mongoChangeStream) {
+    } else {
       const broadcast = await this.alertBroadcastService.broadcast(alertEvent, {
         excludeSocketId: input.excludeSocketId,
         feedItem,

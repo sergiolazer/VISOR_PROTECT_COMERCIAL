@@ -27,6 +27,13 @@ function applyFilter(events: FeedEventItem[], filter: FeedFilter): FeedEventItem
   });
 }
 
+function prependFeedItem(current: FeedEventItem[], item: FeedEventItem): FeedEventItem[] {
+  if (current.some((event) => event.id === item.id)) {
+    return current;
+  }
+  return [item, ...current];
+}
+
 export function useSafetyReel(shopId: string | null) {
   const [events, setEvents] = useState<FeedEventItem[]>([]);
   const [filter, setFilter] = useState<FeedFilter>('all');
@@ -40,21 +47,11 @@ export function useSafetyReel(shopId: string | null) {
     };
 
     const onFeedUpdate = (item: FeedEventItem) => {
-      setEvents((current) => {
-        if (current.some((event) => event.id === item.id)) {
-          return current;
-        }
-        return [item, ...current];
-      });
+      setEvents((current) => prependFeedItem(current, item));
     };
 
     const onReportCreated = (item: FeedEventItem) => {
-      setEvents((current) => {
-        if (current.some((event) => event.id === item.id)) {
-          return current;
-        }
-        return [item, ...current];
-      });
+      setEvents((current) => prependFeedItem(current, item));
     };
 
     const onReportConfirmed = (item: FeedEventItem) => {
@@ -64,29 +61,43 @@ export function useSafetyReel(shopId: string | null) {
     };
 
     const onPanicAlert = (item: FeedEventItem) => {
+      setEvents((current) => prependFeedItem(current, item));
       setActivePanic(item);
     };
 
     const onAlertPush = (dto: AlertPushNotificationDto) => {
       if (shouldShowPanicOverlay(dto)) {
-        setActivePanic(alertPushToFeedItem(dto));
+        const feedItem = alertPushToFeedItem(dto);
+        setEvents((current) => prependFeedItem(current, feedItem));
+        setActivePanic(feedItem);
       }
     };
 
-    socket.on(SOCKET_EVENTS.FEED_HISTORY, onFeedHistory);
-    socket.on(SOCKET_EVENTS.FEED_UPDATES, onFeedUpdate);
-    socket.on(SOCKET_EVENTS.REPORT_CREATED, onReportCreated);
-    socket.on(SOCKET_EVENTS.REPORT_CONFIRMED, onReportConfirmed);
-    socket.on(SOCKET_EVENTS.PANIC_ALERTS, onPanicAlert);
-    socket.on(SOCKET_EVENTS.ALERT_PUSH, onAlertPush);
+    const bind = () => {
+      unbind();
+      socket.on(SOCKET_EVENTS.FEED_HISTORY, onFeedHistory);
+      socket.on(SOCKET_EVENTS.FEED_UPDATES, onFeedUpdate);
+      socket.on(SOCKET_EVENTS.REPORT_CREATED, onReportCreated);
+      socket.on(SOCKET_EVENTS.REPORT_CONFIRMED, onReportConfirmed);
+      socket.on(SOCKET_EVENTS.PANIC_ALERTS, onPanicAlert);
+      socket.on(SOCKET_EVENTS.ALERT_PUSH, onAlertPush);
+    };
 
-    return () => {
+    const unbind = () => {
       socket.off(SOCKET_EVENTS.FEED_HISTORY, onFeedHistory);
       socket.off(SOCKET_EVENTS.FEED_UPDATES, onFeedUpdate);
       socket.off(SOCKET_EVENTS.REPORT_CREATED, onReportCreated);
       socket.off(SOCKET_EVENTS.REPORT_CONFIRMED, onReportConfirmed);
       socket.off(SOCKET_EVENTS.PANIC_ALERTS, onPanicAlert);
       socket.off(SOCKET_EVENTS.ALERT_PUSH, onAlertPush);
+    };
+
+    bind();
+    socket.on('connect', bind);
+
+    return () => {
+      socket.off('connect', bind);
+      unbind();
     };
   }, []);
 
