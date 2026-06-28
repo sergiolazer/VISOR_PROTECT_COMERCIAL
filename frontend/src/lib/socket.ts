@@ -4,6 +4,9 @@ import { getAuthUser } from './auth';
 
 import { SOCKET_URL } from './apiConfig';
 
+/** Vercel proxy no soporta bien WS upgrade; polling same-origin sí. */
+const usePollingViaProxy = import.meta.env.PROD && !import.meta.env.VITE_SOCKET_URL;
+
 let socketInstance: Socket | null = null;
 
 export interface ShopSession {
@@ -25,7 +28,7 @@ export function connectSocket(): Socket {
   }
 
   socketInstance = io(SOCKET_URL, {
-    transports: ['websocket', 'polling'],
+    transports: usePollingViaProxy ? ['polling'] : ['websocket', 'polling'],
     autoConnect: true,
     withCredentials: true,
   });
