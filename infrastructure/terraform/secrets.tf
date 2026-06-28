@@ -9,7 +9,8 @@ resource "aws_secretsmanager_secret_version" "mongo_uri" {
   secret_string = "REPLACE_WITH_MONGODB_ATLAS_URI"
 
   lifecycle {
-    ignore_changes = [secret_string]
+    # Valor real solo en consola/CLI — nunca re-aplicar placeholder tras el bootstrap.
+    ignore_changes = all
   }
 }
 
@@ -23,7 +24,7 @@ resource "aws_secretsmanager_secret_version" "jwt_secret" {
   secret_string = "REPLACE_WITH_STRONG_JWT_SECRET"
 
   lifecycle {
-    ignore_changes = [secret_string]
+    ignore_changes = all
   }
 }
 
@@ -42,6 +43,6 @@ resource "aws_secretsmanager_secret_version" "cloudinary" {
   })
 
   lifecycle {
-    ignore_changes = [secret_string]
+    ignore_changes = all
   }
 }
