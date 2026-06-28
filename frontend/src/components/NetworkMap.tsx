@@ -135,11 +135,13 @@ function MapSurface({
           </button>
         )}
 
-        <div
-          ref={containerRef}
-          className={expanded ? 'h-full w-full' : 'h-80 w-full'}
-          aria-label="Mapa de comercios conectados"
-        />
+        <div className={expanded ? 'relative min-h-0 flex-1' : 'relative'}>
+          <div
+            ref={containerRef}
+            className={expanded ? 'absolute inset-0' : 'h-80 w-full'}
+            aria-label="Mapa de comercios conectados"
+          />
+        </div>
 
         {loading && shops.length === 0 && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/60 text-sm text-slate-300">
@@ -215,8 +217,25 @@ export function NetworkMap({ cityName, currentShopId }: NetworkMapProps) {
     if (!map) {
       return;
     }
-    const timer = window.setTimeout(() => map.invalidateSize(), expanded ? 120 : 0);
-    return () => window.clearTimeout(timer);
+
+    const refreshMap = () => {
+      map.invalidateSize({ animate: false, pan: false });
+      map.eachLayer((layer) => {
+        if (layer instanceof L.TileLayer) {
+          layer.redraw();
+        }
+      });
+    };
+
+    const timers = [0, 80, 200, 450].map((delay) => window.setTimeout(refreshMap, delay));
+    window.addEventListener('resize', refreshMap);
+
+    return () => {
+      for (const timer of timers) {
+        window.clearTimeout(timer);
+      }
+      window.removeEventListener('resize', refreshMap);
+    };
   }, [expanded]);
 
   useEffect(() => {

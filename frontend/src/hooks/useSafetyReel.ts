@@ -101,18 +101,27 @@ export function useSafetyReel(shopId: string | null, cityName: string | null = n
     };
   }, []);
 
-  /** Re-solicita historial tras join_city (evita perder FEED_HISTORY por carrera de listeners). */
+  /** Re-join city on connect so FEED_HISTORY / live updates stay in sync. */
   useEffect(() => {
     if (!shopId || !cityName) {
       return;
     }
 
     const socket = getSocket();
-    if (!socket.connected) {
-      return;
+
+    const joinCityRoom = () => {
+      socket.emit(SOCKET_EVENTS.JOIN_CITY, { city_name: cityName });
+    };
+
+    if (socket.connected) {
+      joinCityRoom();
     }
 
-    socket.emit(SOCKET_EVENTS.JOIN_CITY, { city_name: cityName });
+    socket.on('connect', joinCityRoom);
+
+    return () => {
+      socket.off('connect', joinCityRoom);
+    };
   }, [shopId, cityName]);
 
   const filteredEvents = useMemo(
